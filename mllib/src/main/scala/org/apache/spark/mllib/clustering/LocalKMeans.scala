@@ -19,31 +19,50 @@ package org.apache.spark.mllib.clustering
 
 import scala.util.Random
 
-import org.jblas.{DoubleMatrix, SimpleBlas}
+import org.apache.mahout.math.function.Functions
+import org.apache.mahout.math.{DenseVector => MahoutDenseVector}
+
+import org.apache.spark.mllib.linalg.{MahoutVectorHelper, MahoutVectorWrapper}
+import org.apache.spark.mllib.linalg.MahoutVectorImplicits._
 
 /**
  * An utility object to run K-means locally. This is private to the ML package because it's used
  * in the initialization of KMeans but not meant to be publicly exposed.
  */
 private[mllib] object LocalKMeans {
+
+  def kMeansPlusPlus(
+      seed: Int,
+      points: Array[Array[Double]],
+      weights: Array[Double],
+      k: Int,
+      maxIterations: Int
+  )(implicit d: DummyImplicit)
+  : Array[Array[Double]] = {
+    val mahoutPoints = points.map(v => new MahoutVectorWrapper(new MahoutDenseVector(v, true)))
+    val mahoutCenters = kMeansPlusPlus(seed, mahoutPoints, weights, k, maxIterations)
+    mahoutCenters.map { v =>
+      MahoutVectorHelper.getDenseVectorValues(v.unwrap().asInstanceOf[MahoutDenseVector])
+    }
+  }
+
   /**
    * Run K-means++ on the weighted point set `points`. This first does the K-means++
    * initialization procedure and then roudns of Lloyd's algorithm.
    */
   def kMeansPlusPlus(
       seed: Int,
-      points: Array[Array[Double]],
+      points: Array[MahoutVectorWrapper],
       weights: Array[Double],
       k: Int,
       maxIterations: Int)
-    : Array[Array[Double]] =
-  {
+    : Array[MahoutVectorWrapper] = {
     val rand = new Random(seed)
-    val dimensions = points(0).length
-    val centers = new Array[Array[Double]](k)
+    val dimensions = points(0).size()
+    val centers = new Array[MahoutVectorWrapper](k)
 
     // Initialize centers by sampling using the k-means++ procedure
-    centers(0) = pickWeighted(rand, points, weights)
+    centers(0) = new MahoutDenseVector(pickWeighted(rand, points, weights))
     for (i <- 1 until k) {
       // Pick the next center with a probability proportional to cost under current centers
       val curCenters = centers.slice(0, i)
@@ -66,11 +85,11 @@ private[mllib] object LocalKMeans {
     var moved = true
     while (moved && iteration < maxIterations) {
       moved = false
-      val sums = Array.fill(k)(new DoubleMatrix(dimensions))
+      val sums = Array.fill(k)(new MahoutDenseVector(dimensions))
       val counts = Array.fill(k)(0.0)
       for ((p, i) <- points.zipWithIndex) {
         val index = KMeans.findClosest(centers, p)._1
-        SimpleBlas.axpy(weights(i), new DoubleMatrix(p), sums(index))
+        sums(index).assign(p.times(weights(i)), Functions.PLUS)
         counts(index) += weights(i)
         if (index != oldClosest(i)) {
           moved = true
@@ -83,7 +102,8 @@ private[mllib] object LocalKMeans {
           // Assign center to a random point
           centers(i) = points(rand.nextInt(points.length))
         } else {
-          centers(i) = sums(i).divi(counts(i)).data
+          sums(i).assign(Functions.DIV, counts(i))
+          centers(i) = sums(i)
         }
       }
       iteration += 1

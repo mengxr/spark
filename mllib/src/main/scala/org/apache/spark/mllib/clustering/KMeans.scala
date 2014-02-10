@@ -27,6 +27,9 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.Logging
 import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.util.random.XORShiftRandom
+import org.apache.spark.mllib.linalg.MahoutVectorWrapper
+
+import org.apache.spark.mllib.linalg.MahoutVectorImplicits._
 
 
 /**
@@ -301,6 +304,22 @@ object KMeans {
     (bestIndex, bestDistance)
   }
 
+  private[mllib] def findClosest(centers: Array[MahoutVectorWrapper], point: MahoutVectorWrapper)
+    : (Int, Double) = {
+    var bestDistance = Double.PositiveInfinity
+    var bestIndex = 0
+    var i = 0
+    while (i < centers.length) {
+      val distance = centers(i).getDistanceSquared(point)
+      if (distance < bestDistance) {
+        bestDistance = distance
+        bestIndex = i
+      }
+      i += 1
+    }
+    (bestIndex, bestDistance)
+  }
+
   /**
    * Return the K-means cost of a given point against the given cluster centers.
    */
@@ -314,6 +333,9 @@ object KMeans {
     }
     bestDistance
   }
+
+  private[mllib] def pointCost(centers: Array[MahoutVectorWrapper], point: MahoutVectorWrapper) =
+    findClosest(centers, point)._2
 
   def main(args: Array[String]) {
     if (args.length < 4) {
