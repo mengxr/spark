@@ -19,7 +19,8 @@ package org.apache.spark.mllib.clustering
 
 import scala.collection.mutable.ArrayBuffer
 
-import org.jblas.DoubleMatrix
+import org.apache.mahout.math.function.Functions
+import org.apache.mahout.math.{DenseVector => MahoutDenseVector}
 
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
@@ -27,8 +28,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.Logging
 import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.util.random.XORShiftRandom
-import org.apache.spark.mllib.linalg.MahoutVectorWrapper
-
+import org.apache.spark.mllib.linalg.{MahoutVectorHelper, MahoutVectorWrapper}
 import org.apache.spark.mllib.linalg.MahoutVectorImplicits._
 
 
@@ -49,7 +49,7 @@ class KMeans private (
     var epsilon: Double)
   extends Serializable with Logging
 {
-  private type ClusterCenters = Array[Array[Double]]
+  private type ClusterCenters = Array[MahoutVectorWrapper]
 
   def this() = this(2, 20, 1, KMeans.K_MEANS_PARALLEL, 5, 1e-4)
 
@@ -117,6 +117,15 @@ class KMeans private (
    * performance, because this is an iterative algorithm.
    */
   def run(data: RDD[Array[Double]]): KMeansModel = {
+    val mahoutData = data.map(v => new MahoutVectorWrapper(new MahoutDenseVector(v, true)))
+    runMahout(mahoutData)
+  }
+
+  /**
+   * Train a K-means model on the given set of points; `data` should be cached for high
+   * performance, because this is an iterative algorithm.
+   */
+  def runMahout(data: RDD[MahoutVectorWrapper]): KMeansModel = {
     // TODO: check whether data is persistent; this needs RDD.storageLevel to be publicly readable
 
     val sc = data.sparkContext
@@ -135,9 +144,9 @@ class KMeans private (
 
     // Execute iterations of Lloyd's algorithm until all runs have converged
     while (iteration < maxIterations && !activeRuns.isEmpty) {
-      type WeightedPoint = (DoubleMatrix, Long)
+      type WeightedPoint = (MahoutVectorWrapper, Long)
       def mergeContribs(p1: WeightedPoint, p2: WeightedPoint): WeightedPoint = {
-        (p1._1.addi(p2._1), p1._2 + p2._2)
+        (p1._1.assign(p2._1, Functions.PLUS), p1._2 + p2._2)
       }
 
       val activeCenters = activeRuns.map(r => centers(r)).toArray
@@ -147,15 +156,15 @@ class KMeans private (
       val totalContribs = data.mapPartitions { points =>
         val runs = activeCenters.length
         val k = activeCenters(0).length
-        val dims = activeCenters(0)(0).length
+        val dims = activeCenters(0)(0).size()
 
-        val sums = Array.fill(runs, k)(new DoubleMatrix(dims))
+        val sums = Array.fill(runs, k)(new MahoutVectorWrapper(new MahoutDenseVector(dims)))
         val counts = Array.fill(runs, k)(0L)
 
         for (point <- points; (centers, runIndex) <- activeCenters.zipWithIndex) {
           val (bestCenter, cost) = KMeans.findClosest(centers, point)
           costAccums(runIndex) += cost
-          sums(runIndex)(bestCenter).addi(new DoubleMatrix(point))
+          sums(runIndex)(bestCenter).assign(point, Functions.PLUS)
           counts(runIndex)(bestCenter) += 1
         }
 
@@ -171,8 +180,9 @@ class KMeans private (
         for (j <- 0 until k) {
           val (sum, count) = totalContribs((i, j))
           if (count != 0) {
-            val newCenter = sum.divi(count).data
-            if (MLUtils.squaredDistance(newCenter, centers(run)(j)) > epsilon * epsilon) {
+            sum.assign(Functions.DIV, count)
+            val newCenter = sum
+            if (newCenter.getDistanceSquared(centers(run)(j)) > epsilon * epsilon) {
               changed = true
             }
             centers(run)(j) = newCenter
@@ -190,16 +200,20 @@ class KMeans private (
     }
 
     val bestRun = costs.zipWithIndex.min._2
-    new KMeansModel(centers(bestRun))
+    new KMeansModel(centers(bestRun).map { v =>
+      MahoutVectorHelper.getDenseVectorValues(v.unwrap().asInstanceOf[MahoutDenseVector])
+    })
   }
 
   /**
    * Initialize `runs` sets of cluster centers at random.
    */
-  private def initRandom(data: RDD[Array[Double]]): Array[ClusterCenters] = {
+  private def initRandom(data: RDD[MahoutVectorWrapper]): Array[ClusterCenters] = {
     // Sample all the cluster centers in one pass to avoid repeated scans
     val sample = data.takeSample(true, runs * k, new XORShiftRandom().nextInt()).toSeq
-    Array.tabulate(runs)(r => sample.slice(r * k, (r + 1) * k).toArray)
+    Array.tabulate(runs)(r => sample.slice(r * k, (r + 1) * k).map { v =>
+      new MahoutVectorWrapper(new MahoutDenseVector(v))
+    }.toArray)
   }
 
   /**
@@ -211,7 +225,7 @@ class KMeans private (
    *
    * The original paper can be found at http://theory.stanford.edu/~sergei/papers/vldb12-kmpar.pdf.
    */
-  private def initKMeansParallel(data: RDD[Array[Double]]): Array[ClusterCenters] = {
+  private def initKMeansParallel(data: RDD[MahoutVectorWrapper]): Array[ClusterCenters] = {
     // Initialize each run's center to a random point
     val seed = new XORShiftRandom().nextInt()
     val sample = data.takeSample(true, runs, seed).toSeq
