@@ -28,7 +28,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.Logging
 import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.util.random.XORShiftRandom
-import org.apache.spark.mllib.linalg.{MahoutVectorHelper, MahoutVectorWrapper}
+import org.apache.spark.mllib.linalg.{Vec, MahoutVectorHelper, MahoutVectorWrapper}
 import org.apache.spark.mllib.linalg.MahoutVectorImplicits._
 
 
@@ -125,7 +125,15 @@ class KMeans private (
    * Train a K-means model on the given set of points; `data` should be cached for high
    * performance, because this is an iterative algorithm.
    */
-  def runMahout(data: RDD[MahoutVectorWrapper]): KMeansModel = {
+  def run(data: RDD[Vec])(implicit d: DummyImplicit): KMeansModel = {
+    val mahoutData = data.map(v => v.toMahout)
+    runMahout(mahoutData)
+  }
+
+  /**
+   * Implementation using Mahout.
+   */
+  private def runMahout(data: RDD[MahoutVectorWrapper]): KMeansModel = {
     // TODO: check whether data is persistent; this needs RDD.storageLevel to be publicly readable
 
     val sc = data.sparkContext
@@ -297,6 +305,30 @@ object KMeans {
   }
 
   def train(data: RDD[Array[Double]], k: Int, maxIterations: Int): KMeansModel = {
+    train(data, k, maxIterations, 1, K_MEANS_PARALLEL)
+  }
+
+  def train(
+      data: RDD[Vec],
+      k: Int,
+      maxIterations: Int,
+      runs: Int,
+      initializationMode: String
+  )(implicit d: DummyImplicit): KMeansModel = {
+    new KMeans().setK(k)
+                .setMaxIterations(maxIterations)
+                .setRuns(runs)
+                .setInitializationMode(initializationMode)
+                .run(data)
+  }
+
+  def train(data: RDD[Vec], k: Int, maxIterations: Int, runs: Int)
+           (implicit d: DummyImplicit): KMeansModel = {
+    train(data, k, maxIterations, runs, K_MEANS_PARALLEL)
+  }
+
+  def train(data: RDD[Vec], k: Int, maxIterations: Int)
+           (implicit d: DummyImplicit): KMeansModel = {
     train(data, k, maxIterations, 1, K_MEANS_PARALLEL)
   }
 

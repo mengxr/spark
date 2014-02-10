@@ -17,13 +17,21 @@
 
 package org.apache.spark.mllib.clustering
 
+import org.apache.mahout.math.{DenseVector => MahoutDenseVector}
+
 import org.apache.spark.rdd.RDD
 import org.apache.spark.SparkContext._
+import org.apache.spark.mllib.linalg.{MahoutVectorWrapper, Vec}
 
 /**
  * A clustering model for K-means. Each point belongs to the cluster with the closest center.
  */
 class KMeansModel(val clusterCenters: Array[Array[Double]]) extends Serializable {
+
+  private val mahoutClusterCenters = clusterCenters.map { v =>
+    new MahoutVectorWrapper(new MahoutDenseVector(v, true))
+  }
+
   /** Total number of clusters. */
   def k: Int = clusterCenters.length
 
@@ -32,11 +40,23 @@ class KMeansModel(val clusterCenters: Array[Array[Double]]) extends Serializable
     KMeans.findClosest(clusterCenters, point)._1
   }
 
+  def predict(point: Vec): Int = {
+    KMeans.findClosest(mahoutClusterCenters, point.toMahout)._1
+  }
+
   /**
    * Return the K-means cost (sum of squared distances of points to their nearest center) for this
    * model on the given data.
    */
   def computeCost(data: RDD[Array[Double]]): Double = {
     data.map(p => KMeans.pointCost(clusterCenters, p)).sum()
+  }
+
+  /**
+   * Return the K-means cost (sum of squared distances of points to their nearest center) for this
+   * model on the given data.
+   */
+  def computeCost(data: RDD[Vec])(implicit d: DummyImplicit): Double = {
+    data.map(p => KMeans.pointCost(mahoutClusterCenters, p.toMahout)).sum()
   }
 }
