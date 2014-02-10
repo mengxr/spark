@@ -30,13 +30,6 @@ public class MahoutVectorWrapper implements Serializable, Cloneable {
   private Vector vector = null;
 
   /**
-   * Wraps null (for serialization).
-   */
-  public MahoutVectorWrapper() {
-    // empty
-  }
-
-  /**
    * Wraps a vector.
    */
   public MahoutVectorWrapper(Vector v) {
