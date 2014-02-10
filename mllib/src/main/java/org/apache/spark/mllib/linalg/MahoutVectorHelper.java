@@ -1,3 +1,20 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.spark.mllib.linalg;
 
 import java.lang.reflect.Constructor;
@@ -9,6 +26,8 @@ import org.apache.mahout.math.SequentialAccessSparseVector;
 
 /**
  * Helper class for Mahout vectors.
+ * <p/>
+ * Java reflection is used to extract fields from Mahout vectors without copying the data.
  */
 public class MahoutVectorHelper {
 
@@ -57,7 +76,7 @@ public class MahoutVectorHelper {
   }
 
   /**
-   * Gets the value array from a {@link org.apache.mahout.math.DenseVector} instance.
+   * Gets the values field (double[]) from a {@link org.apache.mahout.math.DenseVector} instance.
    */
   public static double[] getDenseVectorValues(DenseVector denseVector) {
     try {
@@ -67,6 +86,10 @@ public class MahoutVectorHelper {
     }
   }
 
+  /**
+   * Gets the values field ({@link org.apache.mahout.math.OrderedIntDoubleMapping}) from a
+   * {@link org.apache.mahout.math.SequentialAccessSparseVector} instance.
+   */
   public static OrderedIntDoubleMapping getSequentialAccessSparseVectorValues(
       SequentialAccessSparseVector sparseVector
   ) {
