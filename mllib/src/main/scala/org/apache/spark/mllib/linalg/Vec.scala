@@ -17,11 +17,8 @@
 
 package org.apache.spark.mllib.linalg
 
-import org.apache.mahout.math.{
-  Vector => MahoutVector,
-  DenseVector => MahoutDenseVector,
-  SequentialAccessSparseVector => MahoutSequantialAccessSparseVector
-}
+import breeze.linalg.{Vector => BreezeVector, DenseVector => BreezeDenseVector,
+  SparseVector => BreezeSparseVector}
 
 /**
  * Represents a numeric vector, whose index type is Int and value type is Double.
@@ -34,7 +31,7 @@ trait Vec extends Serializable {
   /**
    * Converts the instance to a Mahout vector wrapper.
    */
-  private[mllib] def toMahout: MahoutVectorWrapper
+  private[mllib] def toBreeze: BreezeVector[Double]
 }
 
 /**
@@ -84,20 +81,16 @@ object Vec {
     new SparseVec(size, indices.toArray, values.toArray)
   }
 
-  private[mllib] def fromMahout(wrapper: MahoutVectorWrapper): Vec = {
-    wrapper.unwrap() match {
-      case v: MahoutDenseVector => {
-        new DenseVec(MahoutVectorHelper.getDenseVectorValues(v))
+  private[mllib] def fromBreeze(breezeVector: BreezeVector[Double]): Vec = {
+    breezeVector match {
+      case v: BreezeDenseVector[Double] => {
+        new DenseVec(v.data)
       }
-      case v: MahoutSequantialAccessSparseVector => {
-        val mapping = MahoutVectorHelper.getSequentialAccessSparseVectorValues(v)
-        val indices = mapping.getIndices
-        val values = mapping.getValues
-        require(mapping.getNumMappings == indices.length)
-        new SparseVec(v.size(), indices, values)
+      case v: BreezeSparseVector[Double] => {
+        new SparseVec(v.length, v.index, v.data)
       }
-      case v: MahoutVector => {
-        sys.error("Unsupported Mahout vector type: " + v.getClass)
+      case v: BreezeVector[_] => {
+        sys.error("Unsupported Breeze vector type: " + v.getClass.getName)
       }
     }
   }
@@ -114,9 +107,8 @@ class DenseVec(var values: Array[Double]) extends RandomAccessVec {
 
   override def toString = values.mkString("[", ",", "]")
 
-
-  private[mllib] override def toMahout =
-    new MahoutVectorWrapper(new MahoutDenseVector(values, true))
+  private[mllib] override def toBreeze =
+    new BreezeDenseVector[Double](values)
 }
 
 /**
@@ -134,7 +126,6 @@ class SparseVec(var n: Int, var indices: Array[Int], var values: Array[Double]) 
     "(" + n + "," + indices.zip(values).mkString("[", "," ,"]") + ")"
   }
 
-  private[mllib] override def toMahout = new MahoutVectorWrapper(
-      MahoutVectorHelper.newSequentialAccessSparseVector(n, indices, values)
-  )
+  private[mllib] override def toBreeze =
+    new BreezeSparseVector[Double](indices, values, n)
 }

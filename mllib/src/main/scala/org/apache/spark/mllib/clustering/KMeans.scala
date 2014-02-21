@@ -19,8 +19,7 @@ package org.apache.spark.mllib.clustering
 
 import scala.collection.mutable.ArrayBuffer
 
-import org.apache.mahout.math.function.Functions
-import org.apache.mahout.math.{DenseVector => MahoutDenseVector}
+import breeze.linalg.{Vector => BreezeVector, DenseVector => BreezeDenseVector, }
 
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
@@ -28,8 +27,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.Logging
 import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.util.random.XORShiftRandom
-import org.apache.spark.mllib.linalg.{Vec, MahoutVectorHelper, MahoutVectorWrapper}
-import org.apache.spark.mllib.linalg.MahoutVectorImplicits._
+import org.apache.spark.mllib.linalg.Vec
 
 
 /**
@@ -49,7 +47,9 @@ class KMeans private (
     var epsilon: Double)
   extends Serializable with Logging
 {
-  private type ClusterCenters = Array[MahoutVectorWrapper]
+  private type BV = BreezeVector[Double]
+  private type BDV = BreezeDenseVector[Double]
+  private type ClusterCenters = Array[BDV]
 
   def this() = this(2, 20, 1, KMeans.K_MEANS_PARALLEL, 5, 1e-4)
 
@@ -281,6 +281,10 @@ class KMeans private (
  * Top-level methods for calling K-means clustering.
  */
 object KMeans {
+
+  private type BV = BreezeVector[Double]
+  private type BDV = BreezeDenseVector[Double]
+
   // Initialization mode names
   val RANDOM = "random"
   val K_MEANS_PARALLEL = "k-means||"
@@ -350,13 +354,13 @@ object KMeans {
     (bestIndex, bestDistance)
   }
 
-  private[mllib] def findClosest(centers: Array[MahoutVectorWrapper], point: MahoutVectorWrapper)
+  private[mllib] def findClosest(centers: Array[BDV], point: BV)
     : (Int, Double) = {
     var bestDistance = Double.PositiveInfinity
     var bestIndex = 0
     var i = 0
     while (i < centers.length) {
-      val distance = centers(i).getDistanceSquared(point)
+      val distance = centers(i).
       if (distance < bestDistance) {
         bestDistance = distance
         bestIndex = i

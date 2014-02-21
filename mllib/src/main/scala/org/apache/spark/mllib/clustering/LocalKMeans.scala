@@ -19,17 +19,16 @@ package org.apache.spark.mllib.clustering
 
 import scala.util.Random
 
-import org.apache.mahout.math.function.Functions
-import org.apache.mahout.math.{DenseVector => MahoutDenseVector}
-
-import org.apache.spark.mllib.linalg.{MahoutVectorHelper, MahoutVectorWrapper}
-import org.apache.spark.mllib.linalg.MahoutVectorImplicits._
+import breeze.linalg.{Vector => BreezeVector, DenseVector => BreezeDenseVector}
 
 /**
  * An utility object to run K-means locally. This is private to the ML package because it's used
  * in the initialization of KMeans but not meant to be publicly exposed.
  */
 private[mllib] object LocalKMeans {
+
+  type BV = BreezeVector[Double]
+  type BDV = BreezeDenseVector[Double]
 
   def kMeansPlusPlus(
       seed: Int,
@@ -52,17 +51,18 @@ private[mllib] object LocalKMeans {
    */
   def kMeansPlusPlus(
       seed: Int,
-      points: Array[MahoutVectorWrapper],
+      points: Array[BV],
       weights: Array[Double],
       k: Int,
       maxIterations: Int)
-    : Array[MahoutVectorWrapper] = {
+    : Array[BDV] = {
     val rand = new Random(seed)
-    val dimensions = points(0).size()
-    val centers = new Array[MahoutVectorWrapper](k)
+    val dimensions = points(0).length
+    // Assume the centers of points are dense.
+    val centers = new Array[BDV](k)
 
-    // Initialize centers by sampling using the k-means++ procedure
-    centers(0) = new MahoutDenseVector(pickWeighted(rand, points, weights))
+    // Initialize centers by sampling using the k-means++ procedure.
+    centers(0) = (pickWeighted(rand, points, weights)).toDenseVector
     for (i <- 1 until k) {
       // Pick the next center with a probability proportional to cost under current centers
       val curCenters = centers.slice(0, i)
