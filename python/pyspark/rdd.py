@@ -95,6 +95,13 @@ class RDD(object):
         self.is_checkpointed = False
         self.ctx = ctx
         self._jrdd_deserializer = jrdd_deserializer
+        self._id = jrdd.id()
+
+    def id(self):
+        """
+        A unique ID for this RDD (within its SparkContext).
+        """
+        return self._id
 
     def __repr__(self):
         return self._jrdd.toString()
@@ -163,7 +170,7 @@ class RDD(object):
 
     def map(self, f, preservesPartitioning=False):
         """
-        Return a new RDD containing the distinct elements in this RDD.
+        Return a new RDD by applying a function to each element of this RDD.
         """
         def func(split, iterator): return imap(f, iterator)
         return PipelinedRDD(self, func, preservesPartitioning)
@@ -946,6 +953,11 @@ class RDD(object):
         Pass each value in the key-value pair RDD through a flatMap function
         without changing the keys; this also retains the original RDD's
         partitioning.
+
+        >>> x = sc.parallelize([("a", ["x", "y", "z"]), ("b", ["p", "r"])])
+        >>> def f(x): return x
+        >>> x.flatMapValues(f).collect()
+        [('a', 'x'), ('a', 'y'), ('a', 'z'), ('b', 'p'), ('b', 'r')]
         """
         flat_map_fn = lambda (k, v): ((k, x) for x in f(v))
         return self.flatMap(flat_map_fn, preservesPartitioning=True)
@@ -955,6 +967,11 @@ class RDD(object):
         Pass each value in the key-value pair RDD through a map function
         without changing the keys; this also retains the original RDD's
         partitioning.
+
+        >>> x = sc.parallelize([("a", ["apple", "banana", "lemon"]), ("b", ["grapes"])])
+        >>> def f(x): return len(x)
+        >>> x.mapValues(f).collect()
+        [('a', 3), ('b', 1)]
         """
         map_values_fn = lambda (k, v): (k, f(v))
         return self.map(map_values_fn, preservesPartitioning=True)
