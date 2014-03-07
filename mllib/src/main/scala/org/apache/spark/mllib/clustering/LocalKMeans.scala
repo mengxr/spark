@@ -19,7 +19,7 @@ package org.apache.spark.mllib.clustering
 
 import scala.util.Random
 
-import breeze.linalg.{Vector => BreezeVector, DenseVector => BreezeDenseVector}
+import breeze.linalg.{Vector => BV, DenseVector => BDV}
 
 /**
  * An utility object to run K-means locally. This is private to the ML package because it's used
@@ -27,22 +27,17 @@ import breeze.linalg.{Vector => BreezeVector, DenseVector => BreezeDenseVector}
  */
 private[mllib] object LocalKMeans {
 
-  type BV = BreezeVector[Double]
-  type BDV = BreezeDenseVector[Double]
-
   def kMeansPlusPlus(
       seed: Int,
       points: Array[Array[Double]],
       weights: Array[Double],
       k: Int,
       maxIterations: Int
-  )(implicit d: DummyImplicit)
+                      )(implicit d: DummyImplicit)
   : Array[Array[Double]] = {
-    val mahoutPoints = points.map(v => new MahoutVectorWrapper(new MahoutDenseVector(v, true)))
-    val mahoutCenters = kMeansPlusPlus(seed, mahoutPoints, weights, k, maxIterations)
-    mahoutCenters.map { v =>
-      MahoutVectorHelper.getDenseVectorValues(v.unwrap().asInstanceOf[MahoutDenseVector])
-    }
+    val breezePoints = points.map(v => new BDV[Double](v).asInstanceOf[BV[Double]])
+    val breezeCenters = kMeansPlusPlus(seed, breezePoints, weights, k, maxIterations)
+    breezeCenters.map(_.toArray)
   }
 
   /**
@@ -51,15 +46,15 @@ private[mllib] object LocalKMeans {
    */
   def kMeansPlusPlus(
       seed: Int,
-      points: Array[BV],
+      points: Array[BV[Double]],
       weights: Array[Double],
       k: Int,
       maxIterations: Int)
-    : Array[BDV] = {
+    : Array[BV[Double]] = {
     val rand = new Random(seed)
     val dimensions = points(0).length
     // Assume the centers of points are dense.
-    val centers = new Array[BDV](k)
+    val centers = new Array[BV[Double]](k)
 
     // Initialize centers by sampling using the k-means++ procedure.
     centers(0) = (pickWeighted(rand, points, weights)).toDenseVector
@@ -76,7 +71,7 @@ private[mllib] object LocalKMeans {
         cumulativeScore += weights(j) * KMeans.pointCost(curCenters, points(j))
         j += 1
       }
-      centers(i) = points(j-1)
+      centers(i) = points(j-1).toDenseVector
     }
 
     // Run up to maxIterations iterations of Lloyd's algorithm
@@ -85,11 +80,11 @@ private[mllib] object LocalKMeans {
     var moved = true
     while (moved && iteration < maxIterations) {
       moved = false
-      val sums = Array.fill(k)(new MahoutDenseVector(dimensions))
+      val sums = Array.fill(k)(new BDV(new Array[Double](dimensions)).asInstanceOf[BV[Double]])
       val counts = Array.fill(k)(0.0)
       for ((p, i) <- points.zipWithIndex) {
         val index = KMeans.findClosest(centers, p)._1
-        sums(index).assign(p.times(weights(i)), Functions.PLUS)
+        breeze.linalg.axpy(weights(i), p, sums(index))
         counts(index) += weights(i)
         if (index != oldClosest(i)) {
           moved = true
@@ -100,9 +95,9 @@ private[mllib] object LocalKMeans {
       for (i <- 0 until k) {
         if (counts(i) == 0.0) {
           // Assign center to a random point
-          centers(i) = points(rand.nextInt(points.length))
+          centers(i) = points(rand.nextInt(points.length)).toDenseVector
         } else {
-          sums(i).assign(Functions.DIV, counts(i))
+          sums(i) /= counts(i)
           centers(i) = sums(i)
         }
       }

@@ -19,7 +19,7 @@ package org.apache.spark.mllib.clustering
 
 import scala.collection.mutable.ArrayBuffer
 
-import breeze.linalg.{Vector => BreezeVector, DenseVector => BreezeDenseVector, }
+import breeze.linalg.{Vector => BreezeVector, DenseVector => BreezeDenseVector, squaredDistance}
 
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
@@ -49,7 +49,7 @@ class KMeans private (
 {
   private type BV = BreezeVector[Double]
   private type BDV = BreezeDenseVector[Double]
-  private type ClusterCenters = Array[BDV]
+  private type ClusterCenters = Array[BV]
 
   def this() = this(2, 20, 1, KMeans.K_MEANS_PARALLEL, 5, 1e-4)
 
@@ -117,8 +117,8 @@ class KMeans private (
    * performance, because this is an iterative algorithm.
    */
   def run(data: RDD[Array[Double]]): KMeansModel = {
-    val mahoutData = data.map(v => new MahoutVectorWrapper(new MahoutDenseVector(v, true)))
-    runMahout(mahoutData)
+    val breezeData = data.map(v => new BDV(v).asInstanceOf[BV])
+    runBreeze(breezeData)
   }
 
   /**
@@ -126,14 +126,14 @@ class KMeans private (
    * performance, because this is an iterative algorithm.
    */
   def run(data: RDD[Vec])(implicit d: DummyImplicit): KMeansModel = {
-    val mahoutData = data.map(v => v.toMahout)
-    runMahout(mahoutData)
+    val breezeData = data.map(v => v.toBreeze)
+    runBreeze(breezeData)
   }
 
   /**
-   * Implementation using Mahout.
+   * Implementation using Breeze.
    */
-  private def runMahout(data: RDD[MahoutVectorWrapper]): KMeansModel = {
+  private def runBreeze(data: RDD[BV]): KMeansModel = {
     // TODO: check whether data is persistent; this needs RDD.storageLevel to be publicly readable
 
     val sc = data.sparkContext
@@ -152,9 +152,9 @@ class KMeans private (
 
     // Execute iterations of Lloyd's algorithm until all runs have converged
     while (iteration < maxIterations && !activeRuns.isEmpty) {
-      type WeightedPoint = (MahoutVectorWrapper, Long)
+      type WeightedPoint = (BDV, Long)
       def mergeContribs(p1: WeightedPoint, p2: WeightedPoint): WeightedPoint = {
-        (p1._1.assign(p2._1, Functions.PLUS), p1._2 + p2._2)
+        (p1._1 += p2._1, p1._2 + p2._2)
       }
 
       val activeCenters = activeRuns.map(r => centers(r)).toArray
@@ -164,15 +164,15 @@ class KMeans private (
       val totalContribs = data.mapPartitions { points =>
         val runs = activeCenters.length
         val k = activeCenters(0).length
-        val dims = activeCenters(0)(0).size()
+        val dims = activeCenters(0)(0).length
 
-        val sums = Array.fill(runs, k)(new MahoutVectorWrapper(new MahoutDenseVector(dims)))
+        val sums = Array.fill(runs, k)(new BDV(new Array[Double](dims)))
         val counts = Array.fill(runs, k)(0L)
 
         for (point <- points; (centers, runIndex) <- activeCenters.zipWithIndex) {
           val (bestCenter, cost) = KMeans.findClosest(centers, point)
           costAccums(runIndex) += cost
-          sums(runIndex)(bestCenter).assign(point, Functions.PLUS)
+          sums(runIndex)(bestCenter) += point
           counts(runIndex)(bestCenter) += 1
         }
 
@@ -188,9 +188,9 @@ class KMeans private (
         for (j <- 0 until k) {
           val (sum, count) = totalContribs((i, j))
           if (count != 0) {
-            sum.assign(Functions.DIV, count)
+            sum /= count.toDouble
             val newCenter = sum
-            if (newCenter.getDistanceSquared(centers(run)(j)) > epsilon * epsilon) {
+            if (squaredDistance(newCenter, centers(run)(j)).asInstanceOf[Double] > epsilon * epsilon) {
               changed = true
             }
             centers(run)(j) = newCenter
@@ -209,18 +209,18 @@ class KMeans private (
 
     val bestRun = costs.zipWithIndex.min._2
     new KMeansModel(centers(bestRun).map { v =>
-      MahoutVectorHelper.getDenseVectorValues(v.unwrap().asInstanceOf[MahoutDenseVector])
+      v.toArray
     })
   }
 
   /**
    * Initialize `runs` sets of cluster centers at random.
    */
-  private def initRandom(data: RDD[MahoutVectorWrapper]): Array[ClusterCenters] = {
+  private def initRandom(data: RDD[BV]): Array[ClusterCenters] = {
     // Sample all the cluster centers in one pass to avoid repeated scans
     val sample = data.takeSample(true, runs * k, new XORShiftRandom().nextInt()).toSeq
     Array.tabulate(runs)(r => sample.slice(r * k, (r + 1) * k).map { v =>
-      new MahoutVectorWrapper(new MahoutDenseVector(v))
+      v.toDenseVector
     }.toArray)
   }
 
@@ -233,41 +233,40 @@ class KMeans private (
    *
    * The original paper can be found at http://theory.stanford.edu/~sergei/papers/vldb12-kmpar.pdf.
    */
-  private def initKMeansParallel(data: RDD[MahoutVectorWrapper]): Array[ClusterCenters] = {
+  private def initKMeansParallel(data: RDD[BV]): Array[ClusterCenters] = {
     // Initialize each run's center to a random point
     val seed = new XORShiftRandom().nextInt()
     val sample = data.takeSample(true, runs, seed).toSeq
-    val centers = Array.tabulate(runs)(r => ArrayBuffer(sample(r)))
+    val centers = Array.tabulate(runs)(r => ArrayBuffer(sample(r).toDenseVector))
 
     // On each step, sample 2 * k points on average for each run with probability proportional
     // to their squared distance from that run's current centers
     for (step <- 0 until initializationSteps) {
-      val centerArrays = centers.map(_.toArray)
+      // val centerArrays = centers.map(_.toArray)
       val sumCosts = data.flatMap { point =>
-        for (r <- 0 until runs) yield (r, KMeans.pointCost(centerArrays(r), point))
+        for (r <- 0 until runs) yield (r, KMeans.pointCost(centers(r), point))
       }.reduceByKey(_ + _).collectAsMap()
       val chosen = data.mapPartitionsWithIndex { (index, points) =>
         val rand = new XORShiftRandom(seed ^ (step << 16) ^ index)
         for {
           p <- points
           r <- 0 until runs
-          if rand.nextDouble() < KMeans.pointCost(centerArrays(r), p) * 2 * k / sumCosts(r)
+          if rand.nextDouble() < KMeans.pointCost(centers(r), p) * 2 * k / sumCosts(r)
         } yield (r, p)
       }.collect()
       for ((r, p) <- chosen) {
-        centers(r) += p
+        centers(r) += p.toDenseVector
       }
     }
 
     // Finally, we might have a set of more than k candidate centers for each run; weigh each
     // candidate by the number of points in the dataset mapping to it and run a local k-means++
     // on the weighted centers to pick just k of them
-    val centerArrays = centers.map(_.toArray)
     val weightMap = data.flatMap { p =>
-      for (r <- 0 until runs) yield ((r, KMeans.findClosest(centerArrays(r), p)._1), 1.0)
+      for (r <- 0 until runs) yield ((r, KMeans.findClosest(centers(r), p)._1), 1.0)
     }.reduceByKey(_ + _).collectAsMap()
     val finalCenters = (0 until runs).map { r =>
-      val myCenters = centers(r).toArray
+      val myCenters = centers(r).toArray.asInstanceOf[Array[BV]]
       val myWeights = (0 until myCenters.length).map(i => weightMap.getOrElse((r, i), 0.0)).toArray
       LocalKMeans.kMeansPlusPlus(r, myCenters, myWeights, k, 30)
     }
@@ -354,20 +353,20 @@ object KMeans {
     (bestIndex, bestDistance)
   }
 
-  private[mllib] def findClosest(centers: Array[BDV], point: BV)
+  private[mllib] def findClosest(centers: TraversableOnce[BV], point: BV)
     : (Int, Double) = {
     var bestDistance = Double.PositiveInfinity
     var bestIndex = 0
     var i = 0
-    while (i < centers.length) {
-      val distance = centers(i).
+    centers.foreach { v =>
+      val distance: Double = squaredDistance(v, point)
       if (distance < bestDistance) {
         bestDistance = distance
         bestIndex = i
       }
       i += 1
     }
-    (bestIndex, bestDistance)
+    (bestIndex, math.sqrt(bestDistance))
   }
 
   /**
@@ -384,7 +383,7 @@ object KMeans {
     bestDistance
   }
 
-  private[mllib] def pointCost(centers: Array[MahoutVectorWrapper], point: MahoutVectorWrapper) =
+  private[mllib] def pointCost(centers: TraversableOnce[BV], point: BV) =
     findClosest(centers, point)._2
 
   def main(args: Array[String]) {

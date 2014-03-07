@@ -17,19 +17,19 @@
 
 package org.apache.spark.mllib.clustering
 
-import org.apache.mahout.math.{DenseVector => MahoutDenseVector}
+import breeze.linalg.{DenseVector => BreezeDenseVector}
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.SparkContext._
-import org.apache.spark.mllib.linalg.{MahoutVectorWrapper, Vec}
+import org.apache.spark.mllib.linalg.Vec
 
 /**
  * A clustering model for K-means. Each point belongs to the cluster with the closest center.
  */
 class KMeansModel(val clusterCenters: Array[Array[Double]]) extends Serializable {
 
-  private val mahoutClusterCenters = clusterCenters.map { v =>
-    new MahoutVectorWrapper(new MahoutDenseVector(v, true))
+  private val breezeClusterCenters = clusterCenters.map { v =>
+    new BreezeDenseVector[Double](v)
   }
 
   /** Total number of clusters. */
@@ -41,7 +41,7 @@ class KMeansModel(val clusterCenters: Array[Array[Double]]) extends Serializable
   }
 
   def predict(point: Vec): Int = {
-    KMeans.findClosest(mahoutClusterCenters, point.toMahout)._1
+    KMeans.findClosest(breezeClusterCenters, point.toBreeze)._1
   }
 
   /**
@@ -57,6 +57,6 @@ class KMeansModel(val clusterCenters: Array[Array[Double]]) extends Serializable
    * model on the given data.
    */
   def computeCost(data: RDD[Vec])(implicit d: DummyImplicit): Double = {
-    data.map(p => KMeans.pointCost(mahoutClusterCenters, p.toMahout)).sum()
+    data.map(p => KMeans.pointCost(breezeClusterCenters, p.toBreeze)).sum()
   }
 }
