@@ -27,7 +27,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.Logging
 import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.util.random.XORShiftRandom
-import org.apache.spark.mllib.linalg.Vec
+import org.apache.spark.mllib.linalg.Vector
 
 
 /**
@@ -125,7 +125,7 @@ class KMeans private (
    * Train a K-means model on the given set of points; `data` should be cached for high
    * performance, because this is an iterative algorithm.
    */
-  def run(data: RDD[Vec])(implicit d: DummyImplicit): KMeansModel = {
+  def run(data: RDD[Vector])(implicit d: DummyImplicit): KMeansModel = {
     val breezeData = data.map(v => v.toBreeze)
     runBreeze(breezeData)
   }
@@ -312,7 +312,7 @@ object KMeans {
   }
 
   def train(
-      data: RDD[Vec],
+      data: RDD[Vector],
       k: Int,
       maxIterations: Int,
       runs: Int,
@@ -325,12 +325,12 @@ object KMeans {
                 .run(data)
   }
 
-  def train(data: RDD[Vec], k: Int, maxIterations: Int, runs: Int)
+  def train(data: RDD[Vector], k: Int, maxIterations: Int, runs: Int)
            (implicit d: DummyImplicit): KMeansModel = {
     train(data, k, maxIterations, runs, K_MEANS_PARALLEL)
   }
 
-  def train(data: RDD[Vec], k: Int, maxIterations: Int)
+  def train(data: RDD[Vector], k: Int, maxIterations: Int)
            (implicit d: DummyImplicit): KMeansModel = {
     train(data, k, maxIterations, 1, K_MEANS_PARALLEL)
   }

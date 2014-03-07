@@ -21,7 +21,7 @@ import breeze.linalg.{DenseVector => BreezeDenseVector}
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.SparkContext._
-import org.apache.spark.mllib.linalg.Vec
+import org.apache.spark.mllib.linalg.Vector
 
 /**
  * A clustering model for K-means. Each point belongs to the cluster with the closest center.
@@ -40,7 +40,7 @@ class KMeansModel(val clusterCenters: Array[Array[Double]]) extends Serializable
     KMeans.findClosest(clusterCenters, point)._1
   }
 
-  def predict(point: Vec): Int = {
+  def predict(point: Vector): Int = {
     KMeans.findClosest(breezeClusterCenters, point.toBreeze)._1
   }
 
@@ -56,7 +56,7 @@ class KMeansModel(val clusterCenters: Array[Array[Double]]) extends Serializable
    * Return the K-means cost (sum of squared distances of points to their nearest center) for this
    * model on the given data.
    */
-  def computeCost(data: RDD[Vec])(implicit d: DummyImplicit): Double = {
+  def computeCost(data: RDD[Vector])(implicit d: DummyImplicit): Double = {
     data.map(p => KMeans.pointCost(breezeClusterCenters, p.toBreeze)).sum()
   }
 }

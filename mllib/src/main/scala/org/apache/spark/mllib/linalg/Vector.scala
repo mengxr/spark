@@ -24,8 +24,11 @@ import breeze.linalg.{Vector => BreezeVector, DenseVector => BreezeDenseVector,
  * Represents a numeric vector, whose index type is Int and value type is Double.
  * Not using the name "Vector" because scala imports its [[scala.Vector]] by default.
  */
-trait Vec extends Serializable {
+trait Vector extends Serializable {
 
+  /**
+   * Size of the vector.
+   */
   def size: Int
 
   /**
@@ -38,17 +41,17 @@ trait Vec extends Serializable {
  * Represents a vector with random access to its elements.
  *
  */
-trait RandomAccessVec extends Vec {
+trait RandomAccessVector extends Vector {
   // empty
 }
 
 /**
- * Factory methods for [[org.apache.spark.mllib.linalg.Vec]].
+ * Factory methods for [[org.apache.spark.mllib.linalg.Vector]].
  */
-object Vec {
+object Vectors {
 
   /** Creates a dense vector. */
-  def newDenseVec(values: Array[Double]): Vec = new DenseVec(values)
+  def dense(values: Array[Double]): Vector = new DenseVector(values)
 
   /**
    * Creates a sparse vector providing its index array and value array.
@@ -57,8 +60,8 @@ object Vec {
    * @param indices index array, must be strictly increasing.
    * @param values value array, must have the same length as indices.
    */
-  def newSparseVec(size: Int, indices: Array[Int], values: Array[Double]): Vec =
-    new SparseVec(size, indices, values)
+  def sparse(size: Int, indices: Array[Int], values: Array[Double]): Vector =
+    new SparseVector(size, indices, values)
 
   /**
    * Create a sparse vector using unordered (index, value) pairs.
@@ -66,7 +69,7 @@ object Vec {
    * @param size vector size.
    * @param elements vector elements in (index, value) pairs.
    */
-  def newSparseVec(size: Int, elements: Iterable[(Int, Double)]): Vec = {
+  def sparse(size: Int, elements: Iterable[(Int, Double)]): Vector = {
 
     require(size > 0)
 
@@ -78,16 +81,18 @@ object Vec {
     }
     require(prev < size)
 
-    new SparseVec(size, indices.toArray, values.toArray)
+    new SparseVector(size, indices.toArray, values.toArray)
   }
 
-  private[mllib] def fromBreeze(breezeVector: BreezeVector[Double]): Vec = {
+  private[mllib] def fromBreeze(breezeVector: BreezeVector[Double]): Vector = {
     breezeVector match {
       case v: BreezeDenseVector[Double] => {
-        new DenseVec(v.data)
+        require(v.offset == 0)
+        require(v.stride == 1)
+        new DenseVector(v.data)
       }
       case v: BreezeSparseVector[Double] => {
-        new SparseVec(v.length, v.index, v.data)
+        new SparseVector(v.length, v.index, v.data)
       }
       case v: BreezeVector[_] => {
         sys.error("Unsupported Breeze vector type: " + v.getClass.getName)
@@ -101,7 +106,7 @@ object Vec {
  *
  * @param values
  */
-class DenseVec(var values: Array[Double]) extends RandomAccessVec {
+class DenseVector(var values: Array[Double]) extends RandomAccessVector {
 
   override def size: Int = values.length
 
@@ -118,7 +123,7 @@ class DenseVec(var values: Array[Double]) extends RandomAccessVec {
  * @param indices index array, assume to be strictly increasing.
  * @param values value array, must have the same length as the index array.
  */
-class SparseVec(var n: Int, var indices: Array[Int], var values: Array[Double]) extends Vec {
+class SparseVector(var n: Int, var indices: Array[Int], var values: Array[Double]) extends Vector {
 
   override def size: Int = n
 

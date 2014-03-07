@@ -80,7 +80,9 @@ private[mllib] object LocalKMeans {
     var moved = true
     while (moved && iteration < maxIterations) {
       moved = false
-      val sums = Array.fill(k)(new BDV(new Array[Double](dimensions)).asInstanceOf[BV[Double]])
+      val sums = Array.fill(k)(
+        new BDV[Double](new Array[Double](dimensions)).asInstanceOf[BV[Double]]
+      )
       val counts = Array.fill(k)(0.0)
       for ((p, i) <- points.zipWithIndex) {
         val index = KMeans.findClosest(centers, p)._1

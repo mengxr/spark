@@ -19,40 +19,30 @@ package org.apache.spark.mllib.linalg
 
 import org.scalatest.FunSuite
 
-class VecSuite extends FunSuite {
+class VectorSuite extends FunSuite {
 
   val arr = Array(0.1, 0.2, 0.3, 0.4)
   val n = 20
   val indices = Array(0, 3, 5, 10, 13)
   val values = Array(0.1, 0.5, 0.3, -0.8, -1.0)
 
-//  test("dense vector construction") {
-//
-//    val vec = Vec.newDenseVec(values)
-//    val mahoutVector = new MahoutDenseVector(values)
-//
-//    assert(vec.toMahout.unwrap() == mahoutVector)
-//  }
-//
-//  test("sparse vector construction") {
-//
-//    val vec = Vec.newSparseVec(n, indices, values)
-//    val mahoutVector = new SequentialAccessSparseVector(n, indices.length)
-//    indices.zip(values).foreach { x =>
-//      mahoutVector.set(x._1, x._2)
-//    }
-//
-//    assert(vec.toMahout.unwrap() == mahoutVector)
-//  }
-//
-//  test("sparse vector construction with unordered elements") {
-//
-//    val vec = Vec.newSparseVec(n, indices.zip(values).reverse)
-//    val mahoutVector = new SequentialAccessSparseVector(n, indices.length)
-//    indices.zip(values).foreach { x =>
-//      mahoutVector.set(x._1, x._2)
-//    }
-//
-//    assert(vec.toMahout.unwrap() == mahoutVector)
-//  }
+  test("dense vector construction") {
+   val vec = Vectors.dense(arr).asInstanceOf[DenseVector]
+   assert(vec.size === arr.length)
+   assert(vec.values.eq(arr))
+  }
+
+  test("sparse vector construction") {
+    val vec = Vectors.sparse(n, indices, values).asInstanceOf[SparseVector]
+    assert(vec.size === n)
+    assert(vec.indices.eq(indices))
+    assert(vec.values.eq(values))
+  }
+
+  test("sparse vector construction with unordered elements") {
+    val vec = Vectors.sparse(n, indices.zip(values).reverse).asInstanceOf[SparseVector]
+    assert(vec.size === n)
+    assert(vec.indices === indices)
+    assert(vec.values === values)
+  }
 }

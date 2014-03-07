@@ -20,7 +20,7 @@ package org.apache.spark.mllib.clustering
 import org.scalatest.FunSuite
 
 import org.apache.spark.mllib.util.LocalSparkContext
-import org.apache.spark.mllib.linalg.Vec
+import org.apache.spark.mllib.linalg.{Vectors, Vector}
 
 class KMeansSuite extends FunSuite with LocalSparkContext {
 
@@ -133,9 +133,9 @@ class KMeansSuite extends FunSuite with LocalSparkContext {
   test("single cluster with sparse dataset") {
     val n = 1000
     val smallData = Array(
-      Vec.newSparseVec(n, Seq((0, 1.0), (1, 2.0), (2, 6.0))),
-      Vec.newSparseVec(n, Seq((0, 1.0), (1, 3.0))),
-      Vec.newSparseVec(n, Seq((0, 1.0), (1, 4.0), (2, 6.0)))
+      Vectors.sparse(n, Seq((0, 1.0), (1, 2.0), (2, 6.0))),
+      Vectors.sparse(n, Seq((0, 1.0), (1, 3.0))),
+      Vectors.sparse(n, Seq((0, 1.0), (1, 4.0), (2, 6.0)))
     )
     val data = sc.parallelize((1 to 100).flatMap(_ => smallData), 4)
 
