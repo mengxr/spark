@@ -64,7 +64,7 @@ object Vectors {
     new SparseVector(size, indices, values)
 
   /**
-   * Create a sparse vector using unordered (index, value) pairs.
+   * Creates a sparse vector using unordered (index, value) pairs.
    *
    * @param size vector size.
    * @param elements vector elements in (index, value) pairs.
@@ -84,6 +84,9 @@ object Vectors {
     new SparseVector(size, indices.toArray, values.toArray)
   }
 
+  /**
+   * Creates a vector instance from a breeze vector.
+   */
   private[mllib] def fromBreeze(breezeVector: BreezeVector[Double]): Vector = {
     breezeVector match {
       case v: BreezeDenseVector[Double] => {
@@ -112,8 +115,7 @@ class DenseVector(var values: Array[Double]) extends RandomAccessVector {
 
   override def toString = values.mkString("[", ",", "]")
 
-  private[mllib] override def toBreeze =
-    new BreezeDenseVector[Double](values)
+  private[mllib] override def toBreeze = new BreezeDenseVector[Double](values)
 }
 
 /**
@@ -131,6 +133,5 @@ class SparseVector(var n: Int, var indices: Array[Int], var values: Array[Double
     "(" + n + "," + indices.zip(values).mkString("[", "," ,"]") + ")"
   }
 
-  private[mllib] override def toBreeze =
-    new BreezeSparseVector[Double](indices, values, n)
+  private[mllib] override def toBreeze = new BreezeSparseVector[Double](indices, values, n)
 }

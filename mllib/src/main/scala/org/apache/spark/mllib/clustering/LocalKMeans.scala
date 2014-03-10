@@ -33,8 +33,7 @@ private[mllib] object LocalKMeans {
       weights: Array[Double],
       k: Int,
       maxIterations: Int
-                      )(implicit d: DummyImplicit)
-  : Array[Array[Double]] = {
+  ): Array[Array[Double]] = {
     val breezePoints = points.map(v => new BDV[Double](v).asInstanceOf[BV[Double]])
     val breezeCenters = kMeansPlusPlus(seed, breezePoints, weights, k, maxIterations)
     breezeCenters.map(_.toArray)
@@ -42,15 +41,15 @@ private[mllib] object LocalKMeans {
 
   /**
    * Run K-means++ on the weighted point set `points`. This first does the K-means++
-   * initialization procedure and then roudns of Lloyd's algorithm.
+   * initialization procedure and then rounds of Lloyd's algorithm.
    */
   def kMeansPlusPlus(
       seed: Int,
       points: Array[BV[Double]],
       weights: Array[Double],
       k: Int,
-      maxIterations: Int)
-    : Array[BV[Double]] = {
+      maxIterations: Int
+  )(implicit d: DummyImplicit): Array[BV[Double]] = {
     val rand = new Random(seed)
     val dimensions = points(0).length
     // Assume the centers of points are dense.

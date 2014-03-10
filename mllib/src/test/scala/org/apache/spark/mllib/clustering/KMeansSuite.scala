@@ -130,7 +130,7 @@ class KMeansSuite extends FunSuite with LocalSparkContext {
     assertSetsEqual(model.clusterCenters, Array(Array(1.0, 3.0, 4.0)))
   }
 
-  test("single cluster with sparse dataset") {
+  test("single cluster with sparse data") {
     val n = 1000
     val smallData = Array(
       Vectors.sparse(n, Seq((0, 1.0), (1, 2.0), (2, 6.0))),

@@ -19,16 +19,14 @@ package org.apache.spark.mllib.clustering
 
 import scala.collection.mutable.ArrayBuffer
 
-import breeze.linalg.{Vector => BreezeVector, DenseVector => BreezeDenseVector, squaredDistance}
+import breeze.linalg.{DenseVector => BDV, Vector => BV, squaredDistance => breezeSquaredDistance}
 
-import org.apache.spark.SparkContext
+import org.apache.spark.{Logging, SparkContext}
 import org.apache.spark.SparkContext._
-import org.apache.spark.rdd.RDD
-import org.apache.spark.Logging
-import org.apache.spark.mllib.util.MLUtils
-import org.apache.spark.util.random.XORShiftRandom
 import org.apache.spark.mllib.linalg.Vector
-
+import org.apache.spark.mllib.util.MLUtils
+import org.apache.spark.rdd.RDD
+import org.apache.spark.util.random.XORShiftRandom
 
 /**
  * K-means clustering with support for multiple parallel runs and a k-means++ like initialization
@@ -47,10 +45,6 @@ class KMeans private (
     var epsilon: Double)
   extends Serializable with Logging
 {
-  private type BV = BreezeVector[Double]
-  private type BDV = BreezeDenseVector[Double]
-  private type ClusterCenters = Array[BV]
-
   def this() = this(2, 20, 1, KMeans.K_MEANS_PARALLEL, 5, 1e-4)
 
   /** Set the number of clusters to create (k). Default: 2. */
@@ -117,7 +111,7 @@ class KMeans private (
    * performance, because this is an iterative algorithm.
    */
   def run(data: RDD[Array[Double]]): KMeansModel = {
-    val breezeData = data.map(v => new BDV(v).asInstanceOf[BV])
+    val breezeData = data.map(v => new BDV[Double](v).asInstanceOf[BV[Double]])
     runBreeze(breezeData)
   }
 
@@ -133,7 +127,7 @@ class KMeans private (
   /**
    * Implementation using Breeze.
    */
-  private def runBreeze(data: RDD[BV]): KMeansModel = {
+  private def runBreeze(data: RDD[BV[Double]]): KMeansModel = {
     // TODO: check whether data is persistent; this needs RDD.storageLevel to be publicly readable
 
     val sc = data.sparkContext
@@ -152,7 +146,7 @@ class KMeans private (
 
     // Execute iterations of Lloyd's algorithm until all runs have converged
     while (iteration < maxIterations && !activeRuns.isEmpty) {
-      type WeightedPoint = (BDV, Long)
+      type WeightedPoint = (BDV[Double], Long)
       def mergeContribs(p1: WeightedPoint, p2: WeightedPoint): WeightedPoint = {
         (p1._1 += p2._1, p1._2 + p2._2)
       }
@@ -166,7 +160,7 @@ class KMeans private (
         val k = activeCenters(0).length
         val dims = activeCenters(0)(0).length
 
-        val sums = Array.fill(runs, k)(new BDV(new Array[Double](dims)))
+        val sums = Array.fill(runs, k)(new BDV[Double](new Array[Double](dims)))
         val counts = Array.fill(runs, k)(0L)
 
         for (point <- points; (centers, runIndex) <- activeCenters.zipWithIndex) {
@@ -190,7 +184,7 @@ class KMeans private (
           if (count != 0) {
             sum /= count.toDouble
             val newCenter = sum
-            if (squaredDistance(newCenter, centers(run)(j)).asInstanceOf[Double] > epsilon * epsilon) {
+            if (breezeSquaredDistance(newCenter, centers(run)(j)) > epsilon * epsilon) {
               changed = true
             }
             centers(run)(j) = newCenter
@@ -216,7 +210,7 @@ class KMeans private (
   /**
    * Initialize `runs` sets of cluster centers at random.
    */
-  private def initRandom(data: RDD[BV]): Array[ClusterCenters] = {
+  private def initRandom(data: RDD[BV[Double]]): Array[Array[BV[Double]]] = {
     // Sample all the cluster centers in one pass to avoid repeated scans
     val sample = data.takeSample(true, runs * k, new XORShiftRandom().nextInt()).toSeq
     Array.tabulate(runs)(r => sample.slice(r * k, (r + 1) * k).map { v =>
@@ -233,7 +227,7 @@ class KMeans private (
    *
    * The original paper can be found at http://theory.stanford.edu/~sergei/papers/vldb12-kmpar.pdf.
    */
-  private def initKMeansParallel(data: RDD[BV]): Array[ClusterCenters] = {
+  private def initKMeansParallel(data: RDD[BV[Double]]): Array[Array[BV[Double]]] = {
     // Initialize each run's center to a random point
     val seed = new XORShiftRandom().nextInt()
     val sample = data.takeSample(true, runs, seed).toSeq
@@ -266,7 +260,7 @@ class KMeans private (
       for (r <- 0 until runs) yield ((r, KMeans.findClosest(centers(r), p)._1), 1.0)
     }.reduceByKey(_ + _).collectAsMap()
     val finalCenters = (0 until runs).map { r =>
-      val myCenters = centers(r).toArray.asInstanceOf[Array[BV]]
+      val myCenters = centers(r).toArray.asInstanceOf[Array[BV[Double]]]
       val myWeights = (0 until myCenters.length).map(i => weightMap.getOrElse((r, i), 0.0)).toArray
       LocalKMeans.kMeansPlusPlus(r, myCenters, myWeights, k, 30)
     }
@@ -280,9 +274,6 @@ class KMeans private (
  * Top-level methods for calling K-means clustering.
  */
 object KMeans {
-
-  private type BV = BreezeVector[Double]
-  private type BDV = BreezeDenseVector[Double]
 
   // Initialization mode names
   val RANDOM = "random"
@@ -353,20 +344,23 @@ object KMeans {
     (bestIndex, bestDistance)
   }
 
-  private[mllib] def findClosest(centers: TraversableOnce[BV], point: BV)
+  /**
+   * Returns the index of the closest center to the given point, as well as the squared distance.
+   */
+  private[mllib] def findClosest(centers: TraversableOnce[BV[Double]], point: BV[Double])
     : (Int, Double) = {
     var bestDistance = Double.PositiveInfinity
     var bestIndex = 0
     var i = 0
     centers.foreach { v =>
-      val distance: Double = squaredDistance(v, point)
+      val distance: Double = breezeSquaredDistance(v, point)
       if (distance < bestDistance) {
         bestDistance = distance
         bestIndex = i
       }
       i += 1
     }
-    (bestIndex, math.sqrt(bestDistance))
+    (bestIndex, bestDistance)
   }
 
   /**
@@ -383,7 +377,10 @@ object KMeans {
     bestDistance
   }
 
-  private[mllib] def pointCost(centers: TraversableOnce[BV], point: BV) =
+  /**
+   * Returns the K-means cost of a given point against the given cluster centers.
+   */
+  private[mllib] def pointCost(centers: TraversableOnce[BV[Double]], point: BV[Double]): Double =
     findClosest(centers, point)._2
 
   def main(args: Array[String]) {
