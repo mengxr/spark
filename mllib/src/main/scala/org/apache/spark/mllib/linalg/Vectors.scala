@@ -22,7 +22,6 @@ import breeze.linalg.{Vector => BreezeVector, DenseVector => BreezeDenseVector,
 
 /**
  * Represents a numeric vector, whose index type is Int and value type is Double.
- * Not using the name "Vector" because scala imports its [[scala.Vector]] by default.
  */
 trait Vector extends Serializable {
 

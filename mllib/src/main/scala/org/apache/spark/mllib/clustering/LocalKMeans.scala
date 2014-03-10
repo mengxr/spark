@@ -52,7 +52,6 @@ private[mllib] object LocalKMeans {
   )(implicit d: DummyImplicit): Array[BV[Double]] = {
     val rand = new Random(seed)
     val dimensions = points(0).length
-    // Assume the centers of points are dense.
     val centers = new Array[BV[Double]](k)
 
     // Initialize centers by sampling using the k-means++ procedure.

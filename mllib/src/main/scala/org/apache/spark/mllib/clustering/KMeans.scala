@@ -160,7 +160,7 @@ class KMeans private (
         val k = activeCenters(0).length
         val dims = activeCenters(0)(0).length
 
-        val sums = Array.fill(runs, k)(new BDV[Double](new Array[Double](dims)))
+        val sums = Array.fill(runs, k)(BDV.zeros[Double](dims))
         val counts = Array.fill(runs, k)(0L)
 
         for (point <- points; (centers, runIndex) <- activeCenters.zipWithIndex) {
@@ -236,7 +236,6 @@ class KMeans private (
     // On each step, sample 2 * k points on average for each run with probability proportional
     // to their squared distance from that run's current centers
     for (step <- 0 until initializationSteps) {
-      // val centerArrays = centers.map(_.toArray)
       val sumCosts = data.flatMap { point =>
         for (r <- 0 until runs) yield (r, KMeans.pointCost(centers(r), point))
       }.reduceByKey(_ + _).collectAsMap()
@@ -288,10 +287,10 @@ object KMeans {
     : KMeansModel =
   {
     new KMeans().setK(k)
-                .setMaxIterations(maxIterations)
-                .setRuns(runs)
-                .setInitializationMode(initializationMode)
-                .run(data)
+      .setMaxIterations(maxIterations)
+      .setRuns(runs)
+      .setInitializationMode(initializationMode)
+      .run(data)
   }
 
   def train(data: RDD[Array[Double]], k: Int, maxIterations: Int, runs: Int): KMeansModel = {
