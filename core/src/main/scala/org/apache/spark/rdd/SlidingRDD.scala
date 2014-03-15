@@ -17,13 +17,13 @@
 
 package org.apache.spark.rdd
 
-import scala.collection.mutable
 import scala.reflect.ClassTag
 
 import org.apache.spark.{TaskContext, Partition}
+import scala.collection.mutable
 
 private[spark]
-class SlidingRDDPartition[T](val idx: Int, val prev: Partition, val tail: Seq[T])
+class SlidingRDDPartition[T](val idx: Int, val partitions: Array[Partition])
   extends Partition with Serializable {
   override val index: Int = idx
 }
@@ -41,60 +41,45 @@ class SlidingRDDPartition[T](val idx: Int, val prev: Partition, val tail: Seq[T]
  * @see [[org.apache.spark.rdd.RDD#sliding]]
  */
 private[spark]
-class SlidingRDD[T: ClassTag](@transient val parent: RDD[T], val windowSize: Int)
+class SlidingRDD[T: ClassTag](val parent: RDD[T], val windowSize: Int)
   extends RDD[Seq[T]](parent) {
 
   require(windowSize > 1, s"Window size must be greater than 1, but got $windowSize.")
 
   override def compute(split: Partition, context: TaskContext): Iterator[Seq[T]] = {
     val part = split.asInstanceOf[SlidingRDDPartition[T]]
-    (firstParent[T].iterator(part.prev, context) ++ part.tail)
+    val rdd = firstParent
+    val partitions = part.partitions
+    val n = partitions.size
+    val iter = rdd.iterator(partitions(0), context)
+    val tail = mutable.ListBuffer[T]()
+    var i = 1
+    while ((tail.size < windowSize - 1) && i < n) {
+      tail ++= rdd.iterator(partitions(i), context).take(windowSize - 1)
+      i += 1
+    }
+    (iter ++ tail.take(windowSize - 1))
       .sliding(windowSize)
       .withPartial(false)
   }
 
-  override def getPreferredLocations(split: Partition): Seq[String] =
-    firstParent[T].preferredLocations(split.asInstanceOf[SlidingRDDPartition[T]].prev)
+  override protected def getPreferredLocations(split: Partition): Seq[String] = {
+    val part = split.asInstanceOf[SlidingRDDPartition[T]]
+    val partitions = part.partitions
+    val preferred = firstParent.preferredLocations(partitions(0))
+    if (partitions.size > 1) {
+      val intersect = preferred.intersect(firstParent.preferredLocations(partitions(1)))
+      if (!intersect.isEmpty) {
+        return intersect
+      }
+    }
+    preferred
+  }
 
   override def getPartitions: Array[Partition] = {
     val parentPartitions = parent.partitions
     val n = parentPartitions.size
-    if (n == 0) {
-      Array.empty
-    } else if (n == 1) {
-      Array(new SlidingRDDPartition[T](0, parentPartitions(0), Seq.empty))
-    } else {
-      val n1 = n - 1
-      val w1 = windowSize - 1
-      // Get the first w1 items of each partition, starting from the second partition.
-      val nextHeads =
-        parent.context.runJob(parent, (iter: Iterator[T]) => iter.take(w1).toArray, 1 until n, true)
-      val partitions = mutable.ArrayBuffer[SlidingRDDPartition[T]]()
-      var i = 0
-      var partitionIndex = 0
-      while (i < n1) {
-        var j = i
-        val tail = mutable.ListBuffer[T]()
-        // Keep appending to the current tail until appended a head of size w1.
-        while (j < n1 && nextHeads(j).size < w1) {
-          tail ++= nextHeads(j)
-          j += 1
-        }
-        if (j < n1) {
-          tail ++= nextHeads(j)
-          j += 1
-        }
-        partitions += new SlidingRDDPartition[T](partitionIndex, parentPartitions(i), tail)
-        partitionIndex += 1
-        // Skip appended heads.
-        i = j
-      }
-      // If the head of last partition has size w1, we also need to add this partition.
-      if (nextHeads.last.size == w1) {
-        partitions += new SlidingRDDPartition[T](partitionIndex, parentPartitions(n1), Seq.empty)
-      }
-      partitions.toArray
-    }
+    Array.range(0, n).map(i => new SlidingRDDPartition[T](i, parentPartitions.slice(i, n)))
   }
 
   // TODO: Override methods such as aggregate, which only requires one Spark job.
