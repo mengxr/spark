@@ -180,7 +180,7 @@ object SparkBuild extends Build {
         <artifactId>apache</artifactId>
         <version>13</version>
       </parent>
-      <url>http://spark.incubator.apache.org/</url>
+      <url>http://spark.apache.org/</url>
       <licenses>
         <license>
           <name>Apache 2.0 License</name>
@@ -189,8 +189,8 @@ object SparkBuild extends Build {
         </license>
       </licenses>
       <scm>
-        <connection>scm:git:git@github.com:apache/incubator-spark.git</connection>
-        <url>scm:git:git@github.com:apache/incubator-spark.git</url>
+        <connection>scm:git:git@github.com:apache/spark.git</connection>
+        <url>scm:git:git@github.com:apache/spark.git</url>
       </scm>
       <developers>
         <developer>
@@ -199,7 +199,7 @@ object SparkBuild extends Build {
           <email>matei.zaharia@gmail.com</email>
           <url>http://www.cs.berkeley.edu/~matei</url>
           <organization>Apache Software Foundation</organization>
-          <organizationUrl>http://spark.incubator.apache.org</organizationUrl>
+          <organizationUrl>http://spark.apache.org</organizationUrl>
         </developer>
       </developers>
       <issueManagement>
@@ -271,7 +271,6 @@ object SparkBuild extends Build {
         "commons-daemon"           % "commons-daemon"   % "1.0.10", // workaround for bug HADOOP-9407
         "com.ning"                 % "compress-lzf"     % "1.0.0",
         "org.xerial.snappy"        % "snappy-java"      % "1.0.5",
-        "org.ow2.asm"              % "asm"              % "4.0",
         "org.spark-project.akka"  %% "akka-remote"      % "2.2.3-shaded-protobuf"  excludeAll(excludeNetty),
         "org.spark-project.akka"  %% "akka-slf4j"       % "2.2.3-shaded-protobuf"  excludeAll(excludeNetty),
         "org.spark-project.akka"  %% "akka-testkit"     % "2.2.3-shaded-protobuf" % "test",
