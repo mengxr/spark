@@ -36,7 +36,7 @@ class LassoModel(
   extends GeneralizedLinearModel(weights, intercept)
   with RegressionModel with Serializable {
 
-  override protected def predictPoint(
+  override def predictPoint(
       dataMatrix: DoubleMatrix,
       weightMatrix: DoubleMatrix,
       intercept: Double): Double = {
