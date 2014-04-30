@@ -21,6 +21,7 @@ import scala.language.implicitConversions
 import scala.reflect.ClassTag
 
 import org.apache.spark.rdd.{PartitionPruningRDD, RDD}
+import org.apache.spark.SparkContext._
 import org.apache.spark.storage.StorageLevel
 
 /**
@@ -148,6 +149,16 @@ class RDDFunctions[T: ClassTag](self: RDD[T]) {
 
   def allReduce2(f: (T, T) => T): RDD[T] = {
     val reduced = self.context.broadcast(self.reduce(f))
+    self.mapPartitions((iter) => Iterator(reduced.value), preservesPartitioning = true)
+  }
+
+  def allReduce3(f: (T, T) => T): RDD[T] = {
+    val local =
+      self.mapPartitions((iter) => Iterator(iter.reduce(f)), preservesPartitioning = true)
+    val r = local.mapPartitionsWithIndex((i, iter) =>
+      if (iter.hasNext) Iterator((math.sqrt(i).toInt, iter.next())) else Iterator.empty
+    ).reduceByKey(f).values.reduce(f)
+    val reduced = self.context.broadcast(r)
     self.mapPartitions((iter) => Iterator(reduced.value), preservesPartitioning = true)
   }
 }

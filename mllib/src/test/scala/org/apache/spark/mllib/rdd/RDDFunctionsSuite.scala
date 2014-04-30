@@ -51,7 +51,7 @@ class RDDFunctionsSuite extends FunSuite with LocalSparkContext {
     for (numPartitions <- 128 to 129) {
       val rdd = sc.parallelize(0 until 1000, numPartitions)
       val sum = rdd.reduce(_ + _)
-      val allReduced = rdd.allReduce2(_ + _)
+      val allReduced = rdd.allReduce3(_ + _)
       assert(allReduced.partitions.size === numPartitions)
       assert(allReduced.collect().toSeq === Iterator.fill(numPartitions)(sum).toSeq)
     }
