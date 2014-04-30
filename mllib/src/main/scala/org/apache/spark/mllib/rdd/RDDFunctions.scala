@@ -21,11 +21,12 @@ import scala.language.implicitConversions
 import scala.reflect.ClassTag
 
 import org.apache.spark.rdd.{PartitionPruningRDD, RDD}
+import org.apache.spark.storage.StorageLevel
 
 /**
  * Machine learning specific RDD functions.
  */
-private[mllib]
+// private[mllib]
 class RDDFunctions[T: ClassTag](self: RDD[T]) {
 
   /**
@@ -53,20 +54,67 @@ class RDDFunctions[T: ClassTag](self: RDD[T]) {
    * @param f reducer
    * @return all-reduced RDD
    */
-  def allReduce(f: (T, T) => T): RDD[T] = {
+  def allReduce0(f: (T, T) => T): RDD[T] = {
     val numPartitions = self.partitions.size
     require(numPartitions > 0, "Parent RDD does not have any partitions.")
+
+    var butterfly =
+      self.mapPartitions((iter) => Iterator(iter.reduce(f)), preservesPartitioning = true)
+
     val nextPowerOfTwo = {
+      var n = numPartitions - 1
       var i = 0
-      while ((numPartitions >> i) > 0) {
+      while (n > 0) {
+        n >>= 1
         i += 1
       }
       1 << i
     }
-    var butterfly = self.mapPartitions( (iter) =>
-      Iterator(iter.reduce(f)),
-      preservesPartitioning = true
-    ).cache()
+
+    if (nextPowerOfTwo > numPartitions) {
+      val padding = self.context.parallelize(Seq.empty[T], nextPowerOfTwo - numPartitions)
+      butterfly = butterfly.union(padding)
+    }
+
+    butterfly.persist(StorageLevel.MEMORY_AND_DISK)
+
+    var rdds = Seq.empty[RDD[T]]
+    var offset = nextPowerOfTwo >> 1
+    while (offset > 0) {
+      rdds :+= butterfly
+      butterfly =
+        new ButterflyReducedRDD[T](butterfly, f, offset).persist(StorageLevel.MEMORY_AND_DISK)
+      offset >>= 1
+    }
+
+    butterfly = if (nextPowerOfTwo > numPartitions) {
+      PartitionPruningRDD.create(butterfly, (i) => i < numPartitions)
+    } else {
+      butterfly
+    }
+
+    butterfly.count()
+    rdds.foreach(rdd => rdd.unpersist(blocking = false))
+
+    butterfly
+  }
+
+  def allReduce1(f: (T, T) => T): RDD[T] = {
+    val numPartitions = self.partitions.size
+    require(numPartitions > 0, "Parent RDD does not have any partitions.")
+
+    var butterfly =
+      self.mapPartitions((iter) => Iterator(iter.reduce(f)), preservesPartitioning = true)
+
+    val nextPowerOfTwo = {
+      var n = numPartitions - 1
+      var i = 0
+      while (n > 0) {
+        n >>= 1
+        i += 1
+      }
+      1 << i
+    }
 
     if (nextPowerOfTwo > numPartitions) {
       val padding = self.context.parallelize(Seq.empty[T], nextPowerOfTwo - numPartitions)
@@ -75,7 +123,19 @@ class RDDFunctions[T: ClassTag](self: RDD[T]) {
 
     var offset = nextPowerOfTwo >> 1
     while (offset > 0) {
-      butterfly = new ButterflyReducedRDD[T](butterfly, f, offset).cache()
+      val localOffset = offset
+      val expanded = butterfly.mapPartitionsWithIndex((i, iter) =>
+        if (iter.hasNext) {
+          val item = iter.next()
+          val outIter = Iterator((i, item), ((i + localOffset) % nextPowerOfTwo, item))
+          require(!iter.hasNext, "Must have at most one record per partition.")
+          outIter
+        } else {
+          Iterator.empty
+        }, preservesPartitioning = true)
+      val shuffled = new ButterflyShuffledRDD[T](expanded, offset)
+      butterfly = shuffled.mapPartitions((iter) => Iterator(iter.map(_._2).reduce(f)),
+        preservesPartitioning = true)
       offset >>= 1
     }
 
@@ -84,6 +144,11 @@ class RDDFunctions[T: ClassTag](self: RDD[T]) {
     } else {
       butterfly
     }
+  }
+
+  def allReduce2(f: (T, T) => T): RDD[T] = {
+    val reduced = self.context.broadcast(self.reduce(f))
+    self.mapPartitions((iter) => Iterator(reduced.value), preservesPartitioning = true)
   }
 }
 

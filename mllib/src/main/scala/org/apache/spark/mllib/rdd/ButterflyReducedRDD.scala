@@ -19,8 +19,8 @@ package org.apache.spark.mllib.rdd
 
 import scala.reflect.ClassTag
 
-import org.apache.spark.{TaskContext, Partition}
-import org.apache.spark.rdd.RDD
+import org.apache.spark.{Partitioner, TaskContext, Partition}
+import org.apache.spark.rdd.{ShuffledRDDPartition, ShuffledRDD, RDD}
 
 /** A partition in a butterfly-reduced RDD. */
 private case class ButterflyReducedRDDPartition(
@@ -56,5 +56,20 @@ private[mllib] class ButterflyReducedRDD[T: ClassTag](
 
   override def getPreferredLocations(s: Partition): Seq[String] = {
     rdd.preferredLocations(s.asInstanceOf[ButterflyReducedRDDPartition].source)
+  }
+}
+
+private case class IdentityPartitioner(override val numPartitions: Int) extends Partitioner {
+  override def getPartition(key: Any): Int = key.asInstanceOf[Int]
+}
+
+private[mllib] class ButterflyShuffledRDD[T: ClassTag](
+    @transient rdd: RDD[(Int, T)],
+    @transient offset: Int)
+  extends ShuffledRDD[Int, T, (Int, T)](rdd, IdentityPartitioner(rdd.partitions.length)) {
+
+  override protected def getPreferredLocations(split: Partition): Seq[String] = {
+    val part = split.asInstanceOf[ShuffledRDDPartition]
+    rdd.preferredLocations(rdd.partitions(part.index))
   }
 }
