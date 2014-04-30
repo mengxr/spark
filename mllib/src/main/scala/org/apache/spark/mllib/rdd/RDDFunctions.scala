@@ -163,7 +163,6 @@ class RDDFunctions[T: ClassTag](self: RDD[T]) {
   }
 }
 
-private[mllib]
 object RDDFunctions {
 
   /** Implicit conversion from an RDD to RDDFunctions. */
