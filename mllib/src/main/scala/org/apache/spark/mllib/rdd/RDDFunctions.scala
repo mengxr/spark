@@ -161,6 +161,24 @@ class RDDFunctions[T: ClassTag](self: RDD[T]) {
     val reduced = self.context.broadcast(r)
     self.mapPartitions((iter) => Iterator(reduced.value), preservesPartitioning = true)
   }
+
+  /**
+   * Reduce the elements of this RDD using the binary tree algorithm.
+   */
+  def binaryTreeReduce(f: (T, T) => T): T = {
+    var reduced = self.mapPartitions( (iter) =>
+      if (iter.isEmpty) {
+        Iterator.empty
+      } else {
+        Iterator(iter.reduce(f))
+      },
+      preservesPartitioning = true
+    )
+    while (reduced.partitions.size > 3) {
+      reduced = new BinaryTreeReducedRDD(reduced, f)
+    }
+    reduced.reduce(f)
+  }
 }
 
 object RDDFunctions {
