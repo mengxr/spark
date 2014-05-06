@@ -197,6 +197,16 @@ class RDDFunctions[T: ClassTag](self: RDD[T]) {
     treeReduced.unpersist(blocking = false)
     reduced
   }
+
+  def treeReduce(f: (T, T) => T): T = {
+    if (self.partitions.size < 4) {
+      self.reduce(f)
+    } else {
+      val localReduced = self.mapPartitions(_.reduceLeftOption(f).toIterator, true)
+      val treeReduced = new SquareRootReducedRDD(localReduced, f)
+      treeReduced.reduce(f)
+    }
+  }
 }
 
 object RDDFunctions {
