@@ -105,8 +105,10 @@ private[mllib] class SquareRootReducedRDD[T: ClassTag](rdd: RDD[T], f: (T, T) =>
   }
 }
 
+class DummyDependency[T](rdd: RDD[T]) extends Dependency(rdd)
+
 private[mllib] class BinaryTreeReducedRDD[T: ClassTag](rdd: RDD[T], f: (T, T) => T)
-  extends RDD[T](rdd.context, List(new BinaryTreeDependency(rdd))) {
+  extends RDD[T](rdd.context, List(new DummyDependency(rdd))) {
 
   override protected def getPartitions: Array[Partition] = {
     Array.tabulate((rdd.partitions.size + 1) / 2)(i => BinaryTreeNodePartition(rdd, i))

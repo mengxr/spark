@@ -28,7 +28,7 @@ object ScalableReduce {
   def main(args: Array[String]) {
     val conf = new SparkConf().setAppName("Scalable reduce")
     val sc = new SparkContext(conf)
-    Logger.getRootLogger.setLevel(Level.WARN)
+    Logger.getRootLogger.setLevel(Level.OFF)
     val numPartitions = args(0).toInt
     val index = sc.parallelize(0 until numPartitions, numPartitions)
     for (n <- Seq(100, 1000, 10000, 100000, 1000000, 10000000)) {

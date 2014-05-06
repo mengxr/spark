@@ -100,6 +100,7 @@ class RDDFunctions[T: ClassTag](self: RDD[T]) {
     butterfly
   }
 
+  // Use shuffles.
   def allReduce1(f: (T, T) => T): RDD[T] = {
     val numPartitions = self.partitions.size
     require(numPartitions > 0, "Parent RDD does not have any partitions.")
