@@ -39,19 +39,23 @@ object ScalableReduce {
 
       var start = System.nanoTime()
       vectors.reduce(_ + _)
-      println("reduce: " + (start - System.nanoTime()) / 1e9)
+      println("reduce: " + (System.nanoTime() - start) / 1e9)
 
       start = System.nanoTime()
-      vectors.treeReduce(_ + _)
-      println("treeReduce: " + (start - System.nanoTime()) / 1e9)
+      vectors.treeReduce0(_ + _)
+      println("treeReduce0: " + (System.nanoTime() - start) / 1e9)
+
+      start = System.nanoTime()
+      vectors.treeReduce1(_ + _)
+      println("treeReduce1: " + (System.nanoTime() - start) / 1e9)
 
       start = System.nanoTime()
       vectors.binaryTreeReduce0(_ + _)
-      println("binaryTreeReduce0: " + (start - System.nanoTime() / 1e9))
+      println("binaryTreeReduce0: " + (System.nanoTime() - start) / 1e9)
 
       start = System.nanoTime()
       vectors.binaryTreeReduce1(_ + _)
-      println("binaryTreeReduce1: " + (start - System.nanoTime() / 1e9))
+      println("binaryTreeReduce1: " + (System.nanoTime() - start) / 1e9)
 
       vectors.unpersist()
     }

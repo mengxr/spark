@@ -198,7 +198,7 @@ class RDDFunctions[T: ClassTag](self: RDD[T]) {
     reduced
   }
 
-  def treeReduce(f: (T, T) => T): T = {
+  def treeReduce0(f: (T, T) => T): T = {
     if (self.partitions.size < 4) {
       self.reduce(f)
     } else {
@@ -206,6 +206,13 @@ class RDDFunctions[T: ClassTag](self: RDD[T]) {
       val treeReduced = new SquareRootReducedRDD(localReduced, f)
       treeReduced.reduce(f)
     }
+  }
+
+  def treeReduce1(f: (T, T) => T): T = {
+    val local = self.mapPartitions(_.reduceLeftOption(f).toIterator, true)
+    local.mapPartitionsWithIndex((i, iter) =>
+      iter.map((math.sqrt(i).toInt, _))
+    ).reduceByKey(f).values.reduce(f)
   }
 }
 
