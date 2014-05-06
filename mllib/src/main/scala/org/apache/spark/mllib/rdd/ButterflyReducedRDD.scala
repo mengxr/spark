@@ -73,3 +73,16 @@ private[mllib] class ButterflyShuffledRDD[T: ClassTag](
     rdd.preferredLocations(rdd.partitions(part.index))
   }
 }
+
+private case class BinaryTreePartitioner(override val numPartitions: Int) extends Partitioner {
+  override def getPartition(key: Any): Int = key.asInstanceOf[Int] / 2
+}
+
+private[mllib] class BinaryTreeShuffledRDD[T: ClassTag](@transient rdd: RDD[(Int, T)])
+  extends ShuffledRDD[Int, T, (Int, T)](rdd, BinaryTreePartitioner((rdd.partitions.length + 1) / 2))
+{
+  override protected def getPreferredLocations(split: Partition): Seq[String] = {
+    val part = split.asInstanceOf[ShuffledRDDPartition]
+    rdd.preferredLocations(rdd.partitions(part.index))
+  }
+}

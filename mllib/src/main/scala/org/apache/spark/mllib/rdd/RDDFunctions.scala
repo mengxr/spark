@@ -162,22 +162,40 @@ class RDDFunctions[T: ClassTag](self: RDD[T]) {
     self.mapPartitions((iter) => Iterator(reduced.value), preservesPartitioning = true)
   }
 
+  def binaryTreeReduce0(f: (T, T) => T): T = {
+    var treeReduced = self.mapPartitions(_.reduceLeftOption(f).toIterator)
+    while (treeReduced.partitions.size > 3) {
+      val treeShuffled =
+        new BinaryTreeShuffledRDD(treeReduced.mapPartitionsWithIndex { case (i, iter) =>
+          iter.map((i, _))
+        })
+      treeReduced = treeShuffled.mapPartitions(_.map(_._2).reduceLeftOption(f).toIterator)
+    }
+    treeReduced.reduce(f)
+  }
+
   /**
    * Reduce the elements of this RDD using the binary tree algorithm.
    */
-  def binaryTreeReduce(f: (T, T) => T): T = {
-    var reduced = self.mapPartitions( (iter) =>
+  def binaryTreeReduce1(f: (T, T) => T): T = {
+    var treeReduced = self.mapPartitions( (iter) =>
       if (iter.isEmpty) {
         Iterator.empty
       } else {
         Iterator(iter.reduce(f))
       },
       preservesPartitioning = true
-    )
-    while (reduced.partitions.size > 3) {
-      reduced = new BinaryTreeReducedRDD(reduced, f)
+    ).cache()
+    treeReduced.count()
+    while (treeReduced.partitions.size > 3) {
+      val previous = treeReduced
+      treeReduced = new BinaryTreeReducedRDD(treeReduced, f).cache()
+      treeReduced.count()
+      previous.unpersist(blocking = false)
     }
-    reduced.reduce(f)
+    val reduced = treeReduced.reduce(f)
+    treeReduced.unpersist(blocking = false)
+    reduced
   }
 }
 
