@@ -143,13 +143,13 @@ class SQLContext:
         """
         return SchemaRDD(self._ssql_ctx.table(tableName), self)
 
-    def cacheTable(tableName):
+    def cacheTable(self, tableName):
         """
         Caches the specified table in-memory.
         """
         self._ssql_ctx.cacheTable(tableName)
 
-    def uncacheTable(tableName):
+    def uncacheTable(self, tableName):
         """
         Removes the specified table from the in-memory cache.
         """
@@ -304,6 +304,19 @@ class SchemaRDD(RDD):
         True
         """
         self._jschema_rdd.registerAsTable(name)
+
+    def insertInto(self, tableName, overwrite = False):
+        """
+        Inserts the contents of this SchemaRDD into the specified table,
+        optionally overwriting any existing data.
+        """
+        self._jschema_rdd.insertInto(tableName, overwrite)
+
+    def saveAsTable(self, tableName):
+        """
+        Creates a new table with the contents of this SchemaRDD.
+        """
+        self._jschema_rdd.saveAsTable(tableName)
 
     def _toPython(self):
         # We have to import the Row class explicitly, so that the reference Pickler has is

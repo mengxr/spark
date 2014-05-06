@@ -34,12 +34,13 @@ import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.catalyst.rules._
 import org.apache.spark.sql.catalyst.types._
 import org.apache.spark.sql.execution.SparkLogicalPlan
+import org.apache.spark.sql.hive.execution.{HiveTableScan, InsertIntoHiveTable}
 import org.apache.spark.sql.columnar.InMemoryColumnarTableScan
 
 /* Implicit conversions */
 import scala.collection.JavaConversions._
 
-class HiveMetastoreCatalog(hive: HiveContext) extends Catalog with Logging {
+private[hive] class HiveMetastoreCatalog(hive: HiveContext) extends Catalog with Logging {
   import HiveMetastoreTypes._
 
   val client = Hive.get(hive.hiveconf)
@@ -129,7 +130,7 @@ class HiveMetastoreCatalog(hive: HiveContext) extends Catalog with Logging {
         castChildOutput(p, table, child)
 
       case p @ logical.InsertIntoTable(SparkLogicalPlan(InMemoryColumnarTableScan(
-        _, HiveTableScan(_, table, _))), _, child, _) =>
+        _, HiveTableScan(_, table, _), _)), _, child, _) =>
         castChildOutput(p, table, child)
     }
 
@@ -171,7 +172,7 @@ class HiveMetastoreCatalog(hive: HiveContext) extends Catalog with Logging {
   override def unregisterAllTables() = {}
 }
 
-object HiveMetastoreTypes extends RegexParsers {
+private[hive] object HiveMetastoreTypes extends RegexParsers {
   protected lazy val primitiveType: Parser[DataType] =
     "string" ^^^ StringType |
     "float" ^^^ FloatType |
@@ -229,7 +230,8 @@ object HiveMetastoreTypes extends RegexParsers {
   }
 }
 
-case class MetastoreRelation(databaseName: String, tableName: String, alias: Option[String])
+private[hive] case class MetastoreRelation
+    (databaseName: String, tableName: String, alias: Option[String])
     (val table: TTable, val partitions: Seq[TPartition])
   extends BaseRelation {
   // TODO: Can we use org.apache.hadoop.hive.ql.metadata.Table as the type of table and
