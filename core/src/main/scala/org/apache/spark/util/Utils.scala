@@ -42,6 +42,7 @@ import org.apache.spark.{Logging, SecurityManager, SparkConf, SparkException}
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.executor.ExecutorUncaughtExceptionHandler
 import org.apache.spark.serializer.{DeserializationStream, SerializationStream, SerializerInstance}
+import org.apache.hadoop.conf.Configuration
 
 /**
  * Various utility methods used by Spark.
@@ -1164,6 +1165,24 @@ private[spark] object Utils extends Logging {
         false
       case _ =>
         true
+    }
+  }
+
+  /** Returns the URI of the input path. If a relative path is given, assume it is local. */
+  def resolveURI(path: String): URI = {
+    if (path.contains(":")) {
+      new URI(path)
+    } else {
+      val (body, fragment) = path.split('#') match {
+        case Array(b, f) => (b, f)
+        case Array(b) => (b, null)
+      }
+      val uri = new File(body).toURI
+      if (fragment == null) {
+        uri
+      } else {
+        new URI(uri.getScheme, uri.getSchemeSpecificPart, fragment)
+      }
     }
   }
 }
