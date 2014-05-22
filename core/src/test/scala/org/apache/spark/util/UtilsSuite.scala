@@ -20,6 +20,7 @@ package org.apache.spark.util
 import scala.util.Random
 
 import java.io.{File, ByteArrayOutputStream, ByteArrayInputStream, FileOutputStream}
+import java.net.URI
 import java.nio.{ByteBuffer, ByteOrder}
 
 import com.google.common.base.Charsets
@@ -167,6 +168,18 @@ class UtilsSuite extends FunSuite {
     val result = Utils.findOldFiles(parent, 5) // find files older than 5 secs
     assert(result.size.equals(1))
     assert(result(0).getCanonicalPath.equals(child1.getCanonicalPath))
+  }
+
+  test("resolveURI") {
+    val cwd = System.getProperty("user.dir")
+    Seq(
+      ("hdfs:/root/spark.jar", new URI("hdfs:/root/spark.jar")),
+      ("hdfs:///root/spark.jar#app.jar", new URI("hdfs:/root/spark.jar#app.jar")),
+      ("spark.jar", new URI(s"file:$cwd/spark.jar")),
+      ("spark.jar#app.jar", new URI(s"file:$cwd/spark.jar#app.jar"))
+    ).foreach { case (path, expected) =>
+      assert(Utils.resolveURI(path) === expected)
+    }
   }
 }
 
