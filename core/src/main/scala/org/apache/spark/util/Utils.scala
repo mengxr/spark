@@ -1181,7 +1181,7 @@ private[spark] object Utils extends Logging {
       if (fragment == null) {
         uri
       } else {
-        new URI(uri.getScheme, uri.getSchemeSpecificPart, fragment)
+        new URI(uri.getScheme, uri.getPath, fragment)
       }
     }
   }
