@@ -205,14 +205,14 @@ trait ClientBase extends Logging {
     val statCache: Map[URI, FileStatus] = HashMap[URI, FileStatus]()
 
     Map(
-      ClientBase.SPARK_JAR -> ClientBase.getSparkJar, ClientBase.APP_JAR -> args.userJar,
+      ClientBase.SPARK_JAR -> ClientBase.getSparkJar,
       ClientBase.LOG4J_PROP -> System.getenv(ClientBase.LOG4J_CONF_ENV_KEY)
     ).foreach { case(destName, _localPath) =>
       val localPath: String = if (_localPath != null) _localPath.trim() else ""
       if (! localPath.isEmpty()) {
         val localURI = new URI(localPath)
         if (!ClientBase.LOCAL_SCHEME.equals(localURI.getScheme())) {
-          val setPermissions = if (destName.equals(ClientBase.APP_JAR)) true else false
+          val setPermissions = false
           val destPath = copyRemoteFile(dst, qualifyForLocal(localURI), replication, setPermissions)
           distCacheMgr.addResource(fs, conf, destPath, localResources, LocalResourceType.FILE,
             destName, statCache)
@@ -220,11 +220,13 @@ trait ClientBase extends Logging {
       }
     }
 
-    var cachedSecondaryJarLinks = ListBuffer.empty[String]
-    val fileLists = List( (args.addJars, LocalResourceType.FILE, true),
+    var cachedUserJarLinks = ListBuffer.empty[String]
+    val fileLists = List(
+      (args.userJar, LocalResourceType.FILE, true),
+      (args.addJars, LocalResourceType.FILE, true),
       (args.files, LocalResourceType.FILE, false),
       (args.archives, LocalResourceType.ARCHIVE, false) )
-    fileLists.foreach { case (flist, resType, addToClasspath) =>
+    fileLists.foreach { case (flist, resType, isJar) =>
       if (flist != null && !flist.isEmpty()) {
         flist.split(',').foreach { case file: String =>
           val localURI = new URI(file.trim())
@@ -234,14 +236,16 @@ trait ClientBase extends Logging {
             val destPath = copyRemoteFile(dst, localPath, replication)
             distCacheMgr.addResource(fs, conf, destPath, localResources, resType,
               linkname, statCache)
-            if (addToClasspath) {
-              cachedSecondaryJarLinks += linkname
+            if (isJar) {
+              cachedUserJarLinks += linkname
             }
           }
         }
       }
     }
-    sparkConf.set(ClientBase.CONF_SPARK_YARN_SECONDARY_JARS, cachedSecondaryJarLinks.mkString(","))
+    if (cachedUserJarLinks.nonEmpty) {
+      sparkConf.set(ClientBase.CONF_SPARK_YARN_USER_JARS, cachedUserJarLinks.mkString(","))
+    }
 
     UserGroupInformation.getCurrentUser().addCredentials(credentials)
     localResources
@@ -384,7 +388,7 @@ object ClientBase {
   val LOG4J_PROP: String = "log4j.properties"
   val LOG4J_CONF_ENV_KEY: String = "SPARK_LOG4J_CONF"
   val LOCAL_SCHEME = "local"
-  val CONF_SPARK_YARN_SECONDARY_JARS = "spark.yarn.secondary.jars"
+  val CONF_SPARK_YARN_USER_JARS = "spark.yarn.user.jars"
 
   def getSparkJar = sys.env.get("SPARK_JAR").getOrElse(SparkContext.jarOfClass(this.getClass).head)
 
@@ -477,31 +481,28 @@ object ClientBase {
       }
     }
 
+    val pwd = Environment.PWD.$()
+
     /** Add entry to the classpath. */
     def addClasspathEntry(path: String) = YarnSparkHadoopUtil.addToEnvironment(env,
       Environment.CLASSPATH.name, path, File.pathSeparator)
     /** Add entry to the classpath. Interpreted as a path relative to the working directory. */
-    def addPwdClasspathEntry(entry: String) = addClasspathEntry(Environment.PWD.$() + Path.SEPARATOR + entry)
+    def addPwdClasspathEntry(entry: String) = addClasspathEntry(pwd + Path.SEPARATOR + entry)
 
     extraClassPath.foreach(addClasspathEntry)
 
-    val cachedSecondaryJarLinks =
-      sparkConf.getOption(CONF_SPARK_YARN_SECONDARY_JARS).getOrElse("").split(",")
-    // Normally the users app.jar is last in case conflicts with spark jars
-    if (sparkConf.get("spark.yarn.user.classpath.first", "false").toBoolean) {
-      addPwdClasspathEntry(APP_JAR)
-      cachedSecondaryJarLinks.foreach(addPwdClasspathEntry)
-      addPwdClasspathEntry(SPARK_JAR)
-      ClientBase.populateHadoopClasspath(conf, env)
-    } else {
-      addPwdClasspathEntry(SPARK_JAR)
-      ClientBase.populateHadoopClasspath(conf, env)
-      addPwdClasspathEntry(APP_JAR)
-      cachedSecondaryJarLinks.foreach(addPwdClasspathEntry)
+    addPwdClasspathEntry(SPARK_JAR)
+
+    // Add locally cached user jars to "spark.jars", to be added dynamically by SparkContext.
+    val userJarLinks =
+      sparkConf.getOption(CONF_SPARK_YARN_USER_JARS).getOrElse("").split(",").filter(_.nonEmpty)
+    val userJarPaths = userJarLinks.map(jar => "local:" + pwd + Path.SEPARATOR + jar)
+    val previouslyDefined =
+      sparkConf.getOption("spark.jars").getOrElse("").split(",").filter(_.nonEmpty)
+    val allJars = previouslyDefined ++ userJarPaths
+    if (allJars.nonEmpty) {
+      sparkConf.set("spark.jars", allJars.mkString(","))
     }
-    // Append all class files and jar files under the working directory to the classpath.
-    addClasspathEntry(Environment.PWD.$())
-    addPwdClasspathEntry("*")
   }
 
   /**
