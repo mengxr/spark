@@ -17,6 +17,8 @@
 
 package org.apache.spark.mllib.recommendation
 
+import java.util.Arrays
+
 import scala.collection.mutable.{ArrayBuffer, BitSet}
 import scala.math.{abs, sqrt}
 import scala.util.Random
@@ -24,7 +26,7 @@ import scala.util.Sorting
 import scala.util.hashing.byteswap32
 
 import com.github.fommil.netlib.LAPACK.{getInstance => lapack}
-import org.jblas.{DoubleMatrix, SimpleBlas}
+import com.github.fommil.netlib.BLAS.{getInstance => blas}
 import org.netlib.util.intW
 
 import org.apache.spark.annotation.Experimental
@@ -313,49 +315,18 @@ class ALS private (
    */
   private def computeYtY(factors: RDD[(Int, Array[Array[Double]])]) = {
     val n = rank * (rank + 1) / 2
-    val LYtY = factors.values.aggregate(new DoubleMatrix(n))( seqOp = (L, Y) => {
-      Y.foreach(y => dspr(1.0, wrapDoubleArray(y), L))
-      L
-    }, combOp = (L1, L2) => {
-      L1.addi(L2)
-    })
-    val YtY = new DoubleMatrix(rank, rank)
+    val LYtY = factors.values.aggregate(new Array[Double](n))(
+      seqOp = (U, Y: Array[Array[Double]]) => {
+        Y.foreach(y => blas.dspr("U", rank, 1.0, y, 1, U))
+        U
+      },
+      combOp = (U1, U2) => {
+        blas.daxpy(n, 1.0, U2, 1, U1, 1)
+        U1
+      })
+    val YtY = new Array[Double](rank * rank)
     fillFullMatrix(LYtY, YtY)
     YtY
-  }
-
-  /**
-   * Adds alpha * x * x.t to a matrix in-place. This is the same as BLAS's DSPR.
-   *
-   * @param L the lower triangular part of the matrix packed in an array (row major)
-   */
-  private def dspr(alpha: Double, x: DoubleMatrix, L: DoubleMatrix) = {
-    val n = x.length
-    var i = 0
-    var j = 0
-    var idx = 0
-    var axi = 0.0
-    val xd = x.data
-    val Ld = L.data
-    while (i < n) {
-      axi = alpha * xd(i)
-      j = 0
-      while (j <= i) {
-        Ld(idx) += axi * xd(j)
-        j += 1
-        idx += 1
-      }
-      i += 1
-    }
-  }
-
-  /**
-   * Wrap a double array in a DoubleMatrix without creating garbage.
-   * This is a temporary fix for jblas 1.2.3; it should be safe to move back to the
-   * DoubleMatrix(double[]) constructor come jblas 1.2.4.
-   */
-  private def wrapDoubleArray(v: Array[Double]): DoubleMatrix = {
-    new DoubleMatrix(v.length, 1, v: _*)
   }
 
   /**
@@ -470,7 +441,7 @@ class ALS private (
       rank: Int,
       lambda: Double,
       alpha: Double,
-      YtY: Option[Broadcast[DoubleMatrix]]): RDD[(Int, Array[Array[Double]])] = {
+      YtY: Option[Broadcast[Array[Double]]]): RDD[(Int, Array[Array[Double]])] = {
     productOutLinks.join(products).flatMap { case (bid, (outLinkBlock, factors)) =>
         val toSend = Array.fill(numUserBlocks)(new ArrayBuffer[Array[Double]])
         for (p <- 0 until outLinkBlock.elementIds.length; userBlock <- 0 until numUserBlocks) {
@@ -491,7 +462,7 @@ class ALS private (
    * it received from each product and its InLinkBlock.
    */
   private def updateBlock(messages: Iterable[(Int, Array[Array[Double]])], inLinkBlock: InLinkBlock,
-      rank: Int, lambda: Double, alpha: Double, YtY: Option[Broadcast[DoubleMatrix]])
+      rank: Int, lambda: Double, alpha: Double, YtY: Option[Broadcast[Array[Double]]])
     : Array[Array[Double]] =
   {
     // Sort the incoming block factor messages by block ID and make them an array
@@ -502,12 +473,12 @@ class ALS private (
     // We'll sum up the XtXes using vectors that represent only the lower-triangular part, since
     // the matrices are symmetric
     val triangleSize = rank * (rank + 1) / 2
-    val userXtX = Array.fill(numUsers)(DoubleMatrix.zeros(triangleSize))
-    val userXy = Array.fill(numUsers)(DoubleMatrix.zeros(rank))
+    val userXtX = Array.fill(numUsers)(new Array[Double](triangleSize))
+    val userXy = Array.fill(numUsers)(new Array[Double](rank))
 
     // Some temp variables to avoid memory allocation
-    val tempXtX = DoubleMatrix.zeros(triangleSize)
-    val fullXtX = DoubleMatrix.zeros(rank, rank)
+    val tempXtX = new Array[Double](triangleSize)
+    val fullXtX = new Array[Double](rank * rank)
 
     // Count the number of ratings each user gives to provide user-specific regularization
     val numRatings = Array.fill(numUsers)(0)
@@ -517,9 +488,9 @@ class ALS private (
     for (productBlock <- 0 until numProductBlocks) {
       var p = 0
       while (p < blockFactors(productBlock).length) {
-        val x = wrapDoubleArray(blockFactors(productBlock)(p))
-        tempXtX.fill(0.0)
-        dspr(1.0, x, tempXtX)
+        val x = blockFactors(productBlock)(p)
+        Arrays.fill(tempXtX, 0.0)
+        blas.dspr("U", rank, 1.0, x, 1, tempXtX)
         val (us, rs) = inLinkBlock.ratingsForBlock(productBlock)(p)
         if (implicitPrefs) {
           var i = 0
@@ -528,12 +499,12 @@ class ALS private (
             // Extension to the original paper to handle rs(i) < 0. confidence is a function
             // of |rs(i)| instead so that it is never negative:
             val confidence = 1 + alpha * abs(rs(i))
-            SimpleBlas.axpy(confidence - 1.0, tempXtX, userXtX(us(i)))
+            blas.daxpy(triangleSize, confidence - 1.0, tempXtX, 1, userXtX(us(i)), 1)
             // For rs(i) < 0, the corresponding entry in P is 0 now, not 1 -- negative rs(i)
             // means we try to reconstruct 0. We add terms only where P = 1, so, term below
             // is now only added for rs(i) > 0:
             if (rs(i) > 0) {
-              SimpleBlas.axpy(confidence, x, userXy(us(i)))
+              blas.daxpy(rank, confidence, x, 1, userXy(us(i)), 1)
             }
             i += 1
           }
@@ -541,8 +512,8 @@ class ALS private (
           var i = 0
           while (i < us.length) {
             numRatings(us(i)) += 1
-            userXtX(us(i)).addi(tempXtX)
-            SimpleBlas.axpy(rs(i), x, userXy(us(i)))
+            blas.daxpy(triangleSize, 1.0, tempXtX, 1, userXtX(us(i)), 1)
+            blas.daxpy(rank, rs(i), x, 1, userXy(us(i)), 1)
             i += 1
           }
         }
@@ -560,12 +531,13 @@ class ALS private (
       val regParam = numRatings(index) * lambda
       var i = 0
       while (i < rank) {
-        fullXtX.data(i * rank + i) += regParam
+        fullXtX(i * rank + i) += regParam
         i += 1
       }
       // Solve the resulting matrix, which is symmetric and positive-definite
       if (implicitPrefs) {
-        solveLeastSquares(fullXtX.addi(YtY.get.value), userXy(index), ws)
+        blas.daxpy(rank * rank, 1.0, YtY.get.value, 1, fullXtX, 1)
+        solveLeastSquares(fullXtX, userXy(index), ws)
       } else {
         solveLeastSquares(fullXtX, userXy(index), ws)
       }
@@ -576,17 +548,18 @@ class ALS private (
    * Given A^T A and A^T b, find the x minimising ||Ax - b||_2, possibly subject
    * to nonnegativity constraints if `nonnegative` is true.
    */
-  def solveLeastSquares(ata: DoubleMatrix, atb: DoubleMatrix,
+  def solveLeastSquares(ata: Array[Double], atb: Array[Double],
       ws: NNLS.Workspace): Array[Double] = {
     if (!nonnegative) {
-      val n = ata.rows
+      val n = atb.length
       val info = new intW(0)
-      lapack.dposv("U", n, 1, ata.data, n, atb.data, n, info)
+      lapack.dposv("U", n, 1, ata, n, atb, n, info)
       val code = info.`val`
       assert(code == 0, "DPOSV failed with code $code.")
-      atb.data
+      atb
     } else {
-      NNLS.solve(ata, atb, ws)
+      // NNLS.solve(ata, atb, ws)
+      null
     }
   }
 
@@ -594,15 +567,14 @@ class ALS private (
    * Given a triangular matrix in the order of fillXtX above, compute the full symmetric square
    * matrix that it represents, storing it into destMatrix.
    */
-  private def fillFullMatrix(triangularMatrix: DoubleMatrix, destMatrix: DoubleMatrix) {
-    val rank = destMatrix.rows
+  private def fillFullMatrix(triangularMatrix: Array[Double], destMatrix: Array[Double]) {
     var i = 0
     var pos = 0
     while (i < rank) {
       var j = 0
       while (j <= i) {
-        destMatrix.data(i*rank + j) = triangularMatrix.data(pos)
-        destMatrix.data(j*rank + i) = triangularMatrix.data(pos)
+        destMatrix(i*rank + j) = triangularMatrix(pos)
+        destMatrix(j*rank + i) = triangularMatrix(pos)
         pos += 1
         j += 1
       }
