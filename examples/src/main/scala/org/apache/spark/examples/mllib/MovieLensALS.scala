@@ -55,7 +55,8 @@ object MovieLensALS {
       rank: Int = 10,
       numUserBlocks: Int = -1,
       numProductBlocks: Int = -1,
-      implicitPrefs: Boolean = false)
+      implicitPrefs: Boolean = false,
+      seed: Long = System.nanoTime())
 
   def main(args: Array[String]) {
     val defaultParams = Params()
@@ -83,6 +84,9 @@ object MovieLensALS {
       opt[Unit]("implicitPrefs")
         .text("use implicit preference")
         .action((_, c) => c.copy(implicitPrefs = true))
+      opt[Long]("seed")
+        .text("random seed, default: random")
+        .action((x, c) => c.copy(seed = x))
       arg[String]("<input>")
         .required()
         .text("input paths to a MovieLens dataset of ratings")
@@ -145,7 +149,7 @@ object MovieLensALS {
 
     println(s"Got $numRatings ratings from $numUsers users on $numMovies movies.")
 
-    val splits = ratings.randomSplit(Array(0.8, 0.2))
+    val splits = ratings.randomSplit(Array(0.8, 0.2), params.seed)
     val training = splits(0).cache()
     val test = if (params.implicitPrefs) {
       /*
@@ -173,6 +177,7 @@ object MovieLensALS {
       .setImplicitPrefs(params.implicitPrefs)
       .setUserBlocks(params.numUserBlocks)
       .setProductBlocks(params.numProductBlocks)
+      .setSeed(params.seed)
       .run(training)
 
     val rmse = computeRmse(model, test, params.implicitPrefs)
