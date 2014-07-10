@@ -26,7 +26,7 @@ import scala.util.Sorting
 import scala.util.hashing.byteswap32
 
 import com.github.fommil.netlib.LAPACK.{getInstance => lapack}
-import com.github.fommil.netlib.BLAS.{getInstance => blas}
+import com.github.fommil.netlib.F2jBLAS
 import org.netlib.util.intW
 
 import org.apache.spark.annotation.Experimental
@@ -314,6 +314,7 @@ class ALS private (
    * @return YtY - whose value is only used in the implicit preference model
    */
   private def computeYtY(factors: RDD[(Int, Array[Array[Double]])]) = {
+    val blas = new F2jBLAS
     val n = rank * (rank + 1) / 2
     val LYtY = factors.values.aggregate(new Array[Double](n))(
       seqOp = (U, Y: Array[Array[Double]]) => {
@@ -465,6 +466,7 @@ class ALS private (
       rank: Int, lambda: Double, alpha: Double, YtY: Option[Broadcast[Array[Double]]])
     : Array[Array[Double]] =
   {
+    val blas = new F2jBLAS
     // Sort the incoming block factor messages by block ID and make them an array
     val blockFactors = messages.toSeq.sortBy(_._1).map(_._2).toArray // Array[Array[Double]]
     val numProductBlocks = blockFactors.length
@@ -548,7 +550,7 @@ class ALS private (
    * Given A^T A and A^T b, find the x minimising ||Ax - b||_2, possibly subject
    * to nonnegativity constraints if `nonnegative` is true.
    */
-  def solveLeastSquares(ata: Array[Double], atb: Array[Double],
+  private def solveLeastSquares(ata: Array[Double], atb: Array[Double],
       ws: NNLS.Workspace): Array[Double] = {
     if (!nonnegative) {
       val n = atb.length
