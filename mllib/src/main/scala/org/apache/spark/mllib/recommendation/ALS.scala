@@ -23,7 +23,9 @@ import scala.util.Random
 import scala.util.Sorting
 import scala.util.hashing.byteswap32
 
-import org.jblas.{DoubleMatrix, SimpleBlas, Solve}
+import com.github.fommil.netlib.LAPACK.{getInstance => lapack}
+import org.jblas.{DoubleMatrix, SimpleBlas}
+import org.netlib.util.intW
 
 import org.apache.spark.annotation.Experimental
 import org.apache.spark.broadcast.Broadcast
@@ -577,7 +579,12 @@ class ALS private (
   def solveLeastSquares(ata: DoubleMatrix, atb: DoubleMatrix,
       ws: NNLS.Workspace): Array[Double] = {
     if (!nonnegative) {
-      Solve.solvePositive(ata, atb).data
+      val n = ata.rows
+      val info = new intW(0)
+      lapack.dposv("U", n, 1, ata.data, n, atb.data, n, info)
+      val code = info.`val`
+      assert(code == 0, "DPOSV failed with code $code.")
+      atb.data
     } else {
       NNLS.solve(ata, atb, ws)
     }
