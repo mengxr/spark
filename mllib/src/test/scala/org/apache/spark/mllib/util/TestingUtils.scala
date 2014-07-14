@@ -15,29 +15,31 @@
  * limitations under the License.
  */
 
-package org.apache.spark.examples
+package org.apache.spark.mllib.util
 
-import org.apache.spark._
+import org.apache.spark.mllib.linalg.Vector
 
+object TestingUtils {
 
-object HdfsTest {
-
-  /** Usage: HdfsTest [file] */
-  def main(args: Array[String]) {
-    if (args.length < 1) {
-      System.err.println("Usage: HdfsTest <file>")
-      System.exit(1)
+  implicit class DoubleWithAlmostEquals(val x: Double) {
+    // An improved version of AlmostEquals would always divide by the larger number.
+    // This will avoid the problem of diving by zero.
+    def almostEquals(y: Double, epsilon: Double = 1E-10): Boolean = {
+      if(x == y) {
+        true
+      } else if(math.abs(x) > math.abs(y)) {
+        math.abs(x - y) / math.abs(x) < epsilon
+      } else {
+        math.abs(x - y) / math.abs(y) < epsilon
+      }
     }
-    val sparkConf = new SparkConf().setAppName("HdfsTest")
-    val sc = new SparkContext(sparkConf)
-    val file = sc.textFile(args(0))
-    val mapped = file.map(s => s.length).cache()
-    for (iter <- 1 to 10) {
-      val start = System.currentTimeMillis()
-      for (x <- mapped) { x + 2 }
-      val end = System.currentTimeMillis()
-      println("Iteration " + iter + " took " + (end-start) + " ms")
+  }
+
+  implicit class VectorWithAlmostEquals(val x: Vector) {
+    def almostEquals(y: Vector, epsilon: Double = 1E-10): Boolean = {
+      x.toArray.corresponds(y.toArray) {
+        _.almostEquals(_, epsilon)
+      }
     }
-    sc.stop()
   }
 }
