@@ -43,7 +43,7 @@ import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.partial.{BoundedDouble, PartialResult}
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.util.Utils
-import org.apache.spark.util.random.StratifiedSamplingUtils
+import org.apache.spark.util.random.{StratifiedBernoulliSampler, StratifiedPoissonSampler}
 
 /**
  * Extra functions available on RDDs of (key, value) pairs through an implicit conversion.
@@ -193,7 +193,41 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
   }
 
   /**
-   * Return a subset of this RDD sampled by key (via stratified sampling).
+   * Returns a stratified sample of this RDD with strata defined by key.
+   *
+   * Poisson sampling is used for sampling with replacement, while Bernoulli sampling is used for
+   * sampling without replacement. This function doesn't trigger a job, but the exact sample size
+   * for each stratum is not guaranteed.
+   *
+   * @param withReplacement whether to sample with or without replacement
+   * @param fractions map of specific keys to sampling probabilities
+   * @param seed random seed
+   *
+   * @see [[org.apache.spark.rdd.PairRDDFunctions#sampleByKeyExact]]
+   */
+  def sampleByKey(
+      withReplacement: Boolean,
+      fractions: Map[K, Double],
+      seed: Long = Utils.random.nextLong): RDD[(K, V)] = {
+    if (withReplacement) {
+      fractions.foreach { case (stratum, fraction) =>
+        require(fraction >= 0.0, "Fraction cannot be negative for sampling with replacement but " +
+          s"found $fraction for stratum $stratum.")
+      }
+      val meanFunc: ((K, V)) => Double = (item) => fractions(item._1)
+      new PartitionwiseSampledRDD(self, new StratifiedPoissonSampler(meanFunc), true, seed)
+    } else {
+      fractions.foreach { case (stratum, fraction) =>
+        require(fraction >= 0.0 && fraction <= 1.0, "Fraction must be in [0, 1] for sampling " +
+          s"without replacement but found $fraction for stratum $stratum.")
+      }
+      val probFunc: ((K, V)) => Double = (item) => fractions(item._1)
+      new PartitionwiseSampledRDD(self, new StratifiedBernoulliSampler(probFunc), true, seed)
+    }
+  }
+
+  /**
+   * Return a sampled subset of this RDD with sampling probabilities defined per key (stratum).
    *
    * Create a sample of this RDD using variable sampling rates for different keys as specified by
    * `fractions`, a key to sampling rate map.
@@ -209,22 +243,13 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
    * @param withReplacement whether to sample with or without replacement
    * @param fractions map of specific keys to sampling rates
    * @param seed seed for the random number generator
-   * @param exact whether sample size needs to be exactly math.ceil(fraction * size) per key
    * @return RDD containing the sampled subset
    */
-  def sampleByKey(withReplacement: Boolean,
+  def sampleByKeyExact(
+      withReplacement: Boolean,
       fractions: Map[K, Double],
-      exact: Boolean = false,
       seed: Long = Utils.random.nextLong): RDD[(K, V)]= {
-
-    require(fractions.values.forall(v => v >= 0.0), "Negative sampling rates.")
-
-    val samplingFunc = if (withReplacement) {
-      StratifiedSamplingUtils.getPoissonSamplingFunction(self, fractions, exact, seed)
-    } else {
-      StratifiedSamplingUtils.getBernoulliSamplingFunction(self, fractions, exact, seed)
-    }
-    self.mapPartitionsWithIndex(samplingFunc, preservesPartitioning = true)
+    new ExactStratifiedSampledRDD[K, V](self, withReplacement, fractions, seed)
   }
 
   /**

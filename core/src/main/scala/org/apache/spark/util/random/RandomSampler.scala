@@ -106,3 +106,52 @@ class PoissonSampler[T](mean: Double) extends RandomSampler[T, T] {
 
   override def clone = new PoissonSampler[T](mean)
 }
+
+/**
+ * Stratified Bernoulli sampler.
+ *
+ * @param probFunc a function returns the sampling probability for the input item
+ * @tparam T item type
+ */
+private[spark] class StratifiedBernoulliSampler[T](probFunc: T => Double)
+  extends RandomSampler[T, T] {
+
+  private[random] var rng: Random = new XORShiftRandom
+
+  override def setSeed(seed: Long) = rng.setSeed(seed)
+
+  override def sample(items: Iterator[T]): Iterator[T] = {
+    items.filter(item => rng.nextDouble < probFunc(item))
+  }
+
+  override def clone = new StratifiedBernoulliSampler[T](probFunc)
+}
+
+/**
+ * Stratified Poisson sampler.
+ *
+ * @param meanFunc a function returns the Poisson mean for the input item
+ * @tparam T item type
+ */
+private[spark] class StratifiedPoissonSampler[T](meanFunc: T => Double)
+  extends RandomSampler[T, T] {
+
+  private[random] var rng = new Poisson(1.0, new DRand)
+
+  override def setSeed(seed: Long) {
+    rng = new Poisson(1.0, new DRand(seed.toInt))
+  }
+
+  override def sample(items: Iterator[T]): Iterator[T] = {
+    items.flatMap { item =>
+      val count = rng.nextInt(meanFunc(item))
+      if (count == 0) {
+        Iterator.empty
+      } else {
+        Iterator.fill(count)(item)
+      }
+    }
+  }
+
+  override def clone = new StratifiedPoissonSampler[T](meanFunc)
+}

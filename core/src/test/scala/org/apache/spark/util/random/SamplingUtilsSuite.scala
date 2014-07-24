@@ -43,25 +43,25 @@ class SamplingUtilsSuite extends FunSuite {
     assert(sample3.length === 10)
   }
 
-  test("computeFraction") {
-    // test that the computed fraction guarantees enough data points
-    // in the sample with a failure rate <= 0.0001
-    val n = 100000
+  test("PoissonBounds") {
+    val delta = PoissonBounds.failureRate
+    ((1 until 15) ++ (4 until 10).map(i => 1 << i)).foreach { s =>
+      val lb = PoissonBounds.lower(s)
+      assert(new PoissonDistribution(lb).cumulativeProbability(s) > 1.0 - delta)
+      val ub = PoissonBounds.upper(s)
+      assert(new PoissonDistribution(ub).cumulativeProbability(s) < delta)
+    }
+  }
 
-    for (s <- 1 to 15) {
-      val frac = SamplingUtils.computeFractionForSampleSize(s, n, true)
-      val poisson = new PoissonDistribution(frac * n)
-      assert(poisson.inverseCumulativeProbability(0.0001) >= s, "Computed fraction is too low")
-    }
-    for (s <- List(20, 100, 1000)) {
-      val frac = SamplingUtils.computeFractionForSampleSize(s, n, true)
-      val poisson = new PoissonDistribution(frac * n)
-      assert(poisson.inverseCumulativeProbability(0.0001) >= s, "Computed fraction is too low")
-    }
-    for (s <- List(1, 10, 100, 1000)) {
-      val frac = SamplingUtils.computeFractionForSampleSize(s, n, false)
-      val binomial = new BinomialDistribution(n, frac)
-      assert(binomial.inverseCumulativeProbability(0.0001)*n >= s, "Computed fraction is too low")
+  test("BinomialBounds") {
+    val delta = BinomialBounds.failureRate
+    for (i <- 0 until 10; j <- 0 until i) {
+      val n = 1 << i
+      val s = 1 << j
+      val lb = BinomialBounds.lower(n, s)
+      assert(new BinomialDistribution(n, lb).cumulativeProbability(s) > 1.0 - delta)
+      val ub = BinomialBounds.upper(n, s)
+      assert(new BinomialDistribution(n, ub).cumulativeProbability(s) < delta)
     }
   }
 }

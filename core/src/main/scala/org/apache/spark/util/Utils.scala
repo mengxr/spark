@@ -1305,5 +1305,4 @@ private[spark] object Utils extends Logging {
     val st = if (stackTrace == null) "" else stackTrace.map("        " + _).mkString("\n")
     s"$className: $desc\n$st"
   }
-
 }

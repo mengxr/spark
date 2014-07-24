@@ -88,75 +88,71 @@ class PairRDDFunctionsSuite extends FunSuite with SharedSparkContext {
       (x: Int) => if (x % 10 < (10 * fractionPositive).toInt) "1" else "0"
     }
 
-    def checkSize(exact: Boolean,
+    def checkSize(
         withReplacement: Boolean,
         expected: Long,
         actual: Long,
         p: Double): Boolean = {
-      if (exact) {
-        return expected == actual
-      }
       val stdev = if (withReplacement) math.sqrt(expected) else math.sqrt(expected * p * (1 - p))
       // Very forgiving margin since we're dealing with very small sample sizes most of the time
       math.abs(actual - expected) <= 6 * stdev
     }
 
     // Without replacement validation
-    def takeSampleAndValidateBernoulli(stratifiedData: RDD[(String, Int)],
-        exact: Boolean,
+    def takeSampleAndValidateBernoulli(
+        stratifiedData: RDD[(String, Int)],
         samplingRate: Double,
         seed: Long,
         n: Long) = {
       val expectedSampleSize = stratifiedData.countByKey()
         .mapValues(count => math.ceil(count * samplingRate).toInt)
       val fractions = Map("1" -> samplingRate, "0" -> samplingRate)
-      val sample = stratifiedData.sampleByKey(false, fractions, exact, seed)
+      val sample = stratifiedData.sampleByKey(false, fractions, seed)
       val sampleCounts = sample.countByKey()
+      sampleCounts.foreach { case (k, v) =>
+        assert(checkSize(false, expectedSampleSize(k), v, samplingRate))
+      }
       val takeSample = sample.collect()
-      sampleCounts.foreach { case(k, v) =>
-        assert(checkSize(exact, false, expectedSampleSize(k), v, samplingRate)) }
+      takeSample.foreach { x =>
+        assert(1 <= x._2 && x._2 <= n, s"elements not in [1, $n]")
+      }
       assert(takeSample.size === takeSample.toSet.size)
-      takeSample.foreach { x => assert(1 <= x._2 && x._2 <= n, s"elements not in [1, $n]") }
     }
 
     // With replacement validation
-    def takeSampleAndValidatePoisson(stratifiedData: RDD[(String, Int)],
-        exact: Boolean,
+    def takeSampleAndValidatePoisson(
+        stratifiedData: RDD[(String, Int)],
         samplingRate: Double,
         seed: Long,
         n: Long) = {
-      val expectedSampleSize = stratifiedData.countByKey().mapValues(count =>
-        math.ceil(count * samplingRate).toInt)
+      val expectedSampleSize = stratifiedData.countByKey()
+        .mapValues(count => math.ceil(count * samplingRate).toInt)
       val fractions = Map("1" -> samplingRate, "0" -> samplingRate)
-      val sample = stratifiedData.sampleByKey(true, fractions, exact, seed)
+      val sample = stratifiedData.sampleByKey(true, fractions, seed)
       val sampleCounts = sample.countByKey()
+      sampleCounts.foreach { case (k, v) =>
+        assert(checkSize(true, expectedSampleSize(k), v, samplingRate))
+      }
       val takeSample = sample.collect()
-      sampleCounts.foreach { case(k, v) =>
-        assert(checkSize(exact, true, expectedSampleSize(k), v, samplingRate)) }
       val groupedByKey = takeSample.groupBy(_._1)
       for ((key, v) <- groupedByKey) {
         if (expectedSampleSize(key) >= 100 && samplingRate >= 0.1) {
           // sample large enough for there to be repeats with high likelihood
           assert(v.toSet.size < expectedSampleSize(key))
         } else {
-          if (exact) {
-            assert(v.toSet.size <= expectedSampleSize(key))
-          } else {
-            assert(checkSize(false, true, expectedSampleSize(key), v.toSet.size, samplingRate))
-          }
+          assert(checkSize(true, expectedSampleSize(key), v.toSet.size, samplingRate))
         }
       }
       takeSample.foreach { x => assert(1 <= x._2 && x._2 <= n, s"elements not in [1, $n]") }
     }
 
-    def checkAllCombos(stratifiedData: RDD[(String, Int)],
+    def checkAllCombos(
+        stratifiedData: RDD[(String, Int)],
         samplingRate: Double,
         seed: Long,
         n: Long) = {
-      takeSampleAndValidateBernoulli(stratifiedData, true, samplingRate, seed, n)
-      takeSampleAndValidateBernoulli(stratifiedData, false, samplingRate, seed, n)
-      takeSampleAndValidatePoisson(stratifiedData, true, samplingRate, seed, n)
-      takeSampleAndValidatePoisson(stratifiedData, false, samplingRate, seed, n)
+      takeSampleAndValidateBernoulli(stratifiedData, samplingRate, seed, n)
+      takeSampleAndValidatePoisson(stratifiedData, samplingRate, seed, n)
     }
 
     val defaultSeed = 42L
@@ -166,7 +162,6 @@ class PairRDDFunctionsSuite extends FunSuite with SharedSparkContext {
       val data = sc.parallelize(1 to n, 2)
       val fractionPositive = 0.3
       val stratifiedData = data.keyBy(stratifier(fractionPositive))
-
       val samplingRate = 0.1
       val seed = defaultSeed
       checkAllCombos(stratifiedData, samplingRate, seed, n)
@@ -177,7 +172,110 @@ class PairRDDFunctionsSuite extends FunSuite with SharedSparkContext {
       val n = 100
       val data = sc.parallelize(1 to n, 2)
       val stratifiedData = data.keyBy(stratifier(fractionPositive))
+      val samplingRate = 0.1
+      val seed = defaultSeed
+      checkAllCombos(stratifiedData, samplingRate, seed, n)
+    }
 
+    // Use the same data for the rest of the tests
+    val fractionPositive = 0.3
+    val n = 100
+    val data = sc.parallelize(1 to n, 2)
+    val stratifiedData = data.keyBy(stratifier(fractionPositive))
+
+    // vary seed
+    for (seed <- defaultSeed to defaultSeed + 5L) {
+      val samplingRate = 0.1
+      checkAllCombos(stratifiedData, samplingRate, seed, n)
+    }
+
+    // vary sampling rate
+    for (samplingRate <- List(0.01, 0.05, 0.1, 0.5)) {
+      val seed = defaultSeed
+      checkAllCombos(stratifiedData, samplingRate, seed, n)
+    }
+  }
+
+  test("sampleByKeyExact") {
+    def stratifier (fractionPositive: Double) = {
+      (x: Int) => if (x % 10 < (10 * fractionPositive).toInt) "1" else "0"
+    }
+
+    // Without replacement validation
+    def takeSampleAndValidateBernoulli(
+        stratifiedData: RDD[(String, Int)],
+        samplingRate: Double,
+        seed: Long,
+        n: Long) {
+      val expectedSampleSize = stratifiedData.countByKey()
+        .mapValues(count => math.ceil(count * samplingRate).toInt)
+      val fractions = Map("1" -> samplingRate, "0" -> samplingRate)
+      val sample = stratifiedData.sampleByKeyExact(false, fractions, seed)
+      val sampleCounts = sample.countByKey()
+      sampleCounts.foreach { case (k, v) =>
+        assert(v === expectedSampleSize(k))
+      }
+      val takeSample = sample.collect()
+      takeSample.foreach { x =>
+        assert(1 <= x._2 && x._2 <= n, s"elements not in [1, $n]")
+      }
+    }
+
+    // With replacement validation
+    def takeSampleAndValidatePoisson(
+        stratifiedData: RDD[(String, Int)],
+        samplingRate: Double,
+        seed: Long,
+        n: Long) = {
+      val expectedSampleSize = stratifiedData.countByKey()
+        .mapValues(count => math.ceil(count * samplingRate).toInt)
+      val fractions = Map("1" -> samplingRate, "0" -> samplingRate)
+      val sample = stratifiedData.sampleByKeyExact(true, fractions, seed)
+      val sampleCounts = sample.countByKey()
+      sampleCounts.foreach { case (k, v) =>
+        assert(v === expectedSampleSize(k))
+      }
+      val takeSample = sample.collect()
+      takeSample.foreach { x =>
+        assert(1 <= x._2 && x._2 <= n, s"elements not in [1, $n]")
+      }
+      val groupedByKey = takeSample.groupBy(_._1)
+      for ((key, v) <- groupedByKey) {
+        if (expectedSampleSize(key) >= 100 && samplingRate >= 0.1) {
+          // sample large enough for there to be repeats with high likelihood
+          assert(v.toSet.size < expectedSampleSize(key))
+        } else {
+          assert(v.toSet.size <= expectedSampleSize(key))
+        }
+      }
+    }
+
+    def checkAllCombos(
+        stratifiedData: RDD[(String, Int)],
+        samplingRate: Double,
+        seed: Long,
+        n: Long) = {
+      takeSampleAndValidateBernoulli(stratifiedData, samplingRate, seed, n)
+      takeSampleAndValidatePoisson(stratifiedData, samplingRate, seed, n)
+    }
+
+    val defaultSeed = 42L
+
+    // vary RDD size
+    for (n <- List(100, 1000, 1000000)) {
+      val data = sc.parallelize(1 to n, 2)
+      val fractionPositive = 0.3
+      val stratifiedData = data.keyBy(stratifier(fractionPositive))
+      val samplingRate = 0.1
+      val seed = defaultSeed
+      checkAllCombos(stratifiedData, samplingRate, seed, n)
+    }
+
+    // vary fractionPositive
+    for (fractionPositive <- List(0.1, 0.3, 0.5, 0.7, 0.9)) {
+      val n = 100
+      val data = sc.parallelize(1 to n, 2)
+      val stratifiedData = data.keyBy(stratifier(fractionPositive))
       val samplingRate = 0.1
       val seed = defaultSeed
       checkAllCombos(stratifiedData, samplingRate, seed, n)

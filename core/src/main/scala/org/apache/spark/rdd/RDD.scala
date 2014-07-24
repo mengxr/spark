@@ -42,7 +42,7 @@ import org.apache.spark.partial.PartialResult
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.{BoundedPriorityQueue, CallSite, Utils}
 import org.apache.spark.util.collection.OpenHashMap
-import org.apache.spark.util.random.{BernoulliSampler, PoissonSampler, SamplingUtils}
+import org.apache.spark.util.random._
 
 /**
  * A Resilient Distributed Dataset (RDD), the basic abstraction in Spark. Represents an immutable,
@@ -413,8 +413,12 @@ abstract class RDD[T: ClassTag](
       return Utils.randomizeInPlace(this.collect(), rand)
     }
 
-    val fraction = SamplingUtils.computeFractionForSampleSize(num, initialCount,
-      withReplacement)
+    val ub = if (withReplacement) {
+      PoissonBounds.upper(num) / initialCount
+    } else {
+      BinomialBounds.upper(initialCount, num)
+    }
+    val fraction = math.max(ub, 1e-10)
 
     var samples = this.sample(withReplacement, fraction, rand.nextInt()).collect()
 

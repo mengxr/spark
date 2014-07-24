@@ -20,8 +20,6 @@ package org.apache.spark.util.random
 import scala.reflect.ClassTag
 import scala.util.Random
 
-import org.apache.commons.math3.distribution.PoissonDistribution
-
 private[spark] object SamplingUtils {
 
   /**
@@ -93,96 +91,72 @@ private[spark] object SamplingUtils {
    */
   def computeFractionForSampleSize(sampleSizeLowerBound: Int, total: Long,
       withReplacement: Boolean): Double = {
-    val fraction = sampleSizeLowerBound.toDouble / total
     if (withReplacement) {
-      val numStDev = if (sampleSizeLowerBound < 12) 9 else 5
-      math.max(1e-10, fraction + numStDev * math.sqrt(fraction / total))
+      PoissonBounds.upper(sampleSizeLowerBound)
     } else {
-      BernoulliBounds.getLowerBound(1e-4, total, fraction)
+      BinomialBounds.upper(total, sampleSizeLowerBound)
     }
   }
 }
 
 /**
- * Utility functions that help us determine bounds on adjusted sampling rate to guarantee exact
- * sample sizes with high confidence when sampling with replacement.
- *
- * The algorithm for guaranteeing sample size instantly accepts items whose associated value drawn
- * from Pois(s) is less than the lower bound and puts items whose value is between the lower and
- * upper bound in a waitlist. The final sample is consisted of all items accepted on the fly and a
- * portion of the waitlist needed to make the exact sample size.
+ * Bounds for Poisson distribution.
  */
 private[spark] object PoissonBounds {
 
-  val delta = 1e-4 / 3.0
-  val epsilon = 1e-15
+  val failureRate = 1e-4
 
   /**
-   * Compute the threshold for accepting items on the fly. The threshold value is a fairly small
-   * number, which means if the item has an associated value < threshold, it is highly likely to
-   * be in the final sample. Hence we accept items with values less than the returned value of this
-   * function instantly.
-   *
-   * @param s sample size
-   * @return threshold for accepting items on the fly
+   * Returns lambda such that Pr[X > s] is very small, where X ~ Pois(lambda).
    */
-  def getLowerBound(s: Double): Double = {
-    var lb = math.max(0.0, s - math.sqrt(s / delta)) // Chebyshev's inequality
-    var ub = s
-    while (lb < ub - 1.0) {
-      val m = (lb + ub) / 2.0
-      val poisson = new PoissonDistribution(m, epsilon)
-      val y = poisson.inverseCumulativeProbability(1 - delta)
-      if (y > s) ub = m else lb = m
-    }
-    lb
+  def lower(s: Double): Double = {
+    math.max(s - numStd(s) * math.sqrt(s), 1e-15)
   }
 
-  def getMinCount(lmbd: Double): Double = {
-    if (lmbd == 0) {
-      0
+  /**
+   * Returns lambda such that Pr[X < s] is very small, where X ~ Pois(lambda).
+   */
+  def upper(s: Double): Double = {
+    s + numStd(s) * math.sqrt(s)
+  }
+
+  private def numStd(s: Double): Double = {
+    if (s < 6.0) {
+      12.0
+    } else if (s < 16.0) {
+      9.0
     } else {
-      val poisson = new PoissonDistribution(lmbd, epsilon)
-      poisson.inverseCumulativeProbability(delta)
+      6.0
     }
-  }
-
-  /**
-   * Compute the threshold for waitlisting items. An item is waitlisted if its associated value is
-   * greater than the lower bound determined above but below the upper bound computed here.
-   * The value is computed such that we only need to keep log(s) items in the waitlist and still be
-   * able to guarantee sample size with high confidence.
-   *
-   * @param s sample size
-   * @return threshold for waitlisting the item
-   */
-  def getUpperBound(s: Double): Double = {
-    var lb = s
-    var ub = s + math.sqrt(s / delta) // Chebyshev's inequality
-    while (lb < ub - 1.0) {
-      val m = (lb + ub) / 2.0
-      val poisson = new PoissonDistribution(m, epsilon)
-      val y = poisson.inverseCumulativeProbability(delta)
-      if (y >= s) ub = m else lb = m
-    }
-    ub
   }
 }
 
+/**
+ * Bounds for Binomial distribution.
+ */
+private[spark] object BinomialBounds {
 
-private[spark] object BernoulliBounds {
+  val failureRate = 1e-4
 
-  val minSamplingRate = 1e-10
-
-  def getUpperBound(delta: Double, n: Long, fraction: Double): Double = {
-    val gamma = - math.log(delta) / n * (2.0 / 3.0)
-    math.max(minSamplingRate,
-      fraction + gamma - math.sqrt(gamma * gamma + 3 * gamma * fraction))
+  /**
+   * Returns p such that Pr[X > s] is very small, where X ~ B(n, p).
+   */
+  def lower(n: Long, s: Long): Double = {
+    require(s <= n)
+    val q = s.toDouble / n
+    val gamma = - (2.0 / 3.0) * math.log(failureRate) / n
+    val p = q + gamma - math.sqrt(gamma * gamma + 3.0 * gamma * q)
+    math.max(p, 0.0)
   }
 
-  def getLowerBound(delta: Double, n: Long, fraction: Double): Double = {
-    val gamma = - math.log(delta) / n
-    math.min(1,
-      math.max(minSamplingRate, fraction + gamma + math.sqrt(gamma * gamma + 2 * gamma * fraction)))
+  /**
+   * Returns p such that Pr[X < s] is very small, where X ~ B(n, p).
+   */
+  def upper(n: Long, s: Long): Double = {
+    require(s <= n)
+    val q = s.toDouble / n
+    val gamma = - math.log(failureRate) / n
+    val p = q + gamma + math.sqrt(gamma * gamma + 2.0 * gamma * q)
+    math.min(p, 1.0)
   }
 }
