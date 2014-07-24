@@ -121,6 +121,7 @@ private[spark] object PoissonBounds {
   }
 
   private def numStd(s: Double): Double = {
+    // TODO: Make it tighter.
     if (s < 6.0) {
       12.0
     } else if (s < 16.0) {
@@ -140,6 +141,8 @@ private[spark] object BinomialBounds {
 
   /**
    * Returns p such that Pr[X > s] is very small, where X ~ B(n, p).
+   *
+   * The bound is derived from Bernstein's inequality to the sum of Bernoulli variables.
    */
   def lower(n: Long, s: Long): Double = {
     require(s <= n)
@@ -151,6 +154,8 @@ private[spark] object BinomialBounds {
 
   /**
    * Returns p such that Pr[X < s] is very small, where X ~ B(n, p).
+   *
+   * The bound is derived from Maurer's inequality to the sum of Bernoulli variables.
    */
   def upper(n: Long, s: Long): Double = {
     require(s <= n)

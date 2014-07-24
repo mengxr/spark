@@ -84,6 +84,8 @@ class PairRDDFunctionsSuite extends FunSuite with SharedSparkContext {
   }
 
   test("sampleByKey") {
+    // TODO: Use different sampling probabiliities.
+
     def stratifier (fractionPositive: Double) = {
       (x: Int) => if (x % 10 < (10 * fractionPositive).toInt) "1" else "0"
     }
@@ -197,6 +199,8 @@ class PairRDDFunctionsSuite extends FunSuite with SharedSparkContext {
   }
 
   test("sampleByKeyExact") {
+    // TODO: Use different sampling probabiliities.
+
     def stratifier (fractionPositive: Double) = {
       (x: Int) => if (x % 10 < (10 * fractionPositive).toInt) "1" else "0"
     }

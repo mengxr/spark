@@ -130,15 +130,22 @@ class JavaPairRDD[K, V](val rdd: RDD[(K, V)])
     new JavaPairRDD[K, V](rdd.sample(withReplacement, fraction, seed))
 
   /**
-   * Samples a sampled subset of this RDD with sampling probabilities defined per key (stratum).
+   * Returns a stratified sample of this RDD with sampling probabilities defined per key (stratum).
    *
-   * Poisson sampling is used for sampling with replacement, while Bernoulli sampling is used for
-   * sampling without replacement. This function doesn't trigger a job, but the exact sample size
-   * for each stratum is not guaranteed.
+   * For each stratum, items associated with the same key, this method samples with or without
+   * replacement using the sampling probability specified in `fractions`, a key to sampling
+   * probability map. Poisson sampling is used for sampling with replacement, while Bernoulli
+   * sampling is used for sampling without replacement. The desired sample size for each stratum is
+   * `math.ceil(p * n)` where `p` is the sampling probability for that stratum and `n` is the size
+   * of the stratum. The actual sample size has a variance of `O(math.ceil(p * n))`.
+   *
+   * This method doesn't trigger a job.
    *
    * @param withReplacement whether to sample with or without replacement
    * @param fractions map of specific keys to sampling probabilities
-   * @param seed seed for the random number generator
+   * @param seed random seed
+   *
+   * @see [[org.apache.spark.api.java.JavaPairRDD#sampleByKeyExact]]
    */
   def sampleByKey(
       withReplacement: Boolean,
@@ -146,29 +153,49 @@ class JavaPairRDD[K, V](val rdd: RDD[(K, V)])
       seed: Long): JavaPairRDD[K, V] =
     new JavaPairRDD[K, V](rdd.sampleByKey(withReplacement, fractions, seed))
 
+  /**
+   * Returns a stratified sample of this RDD with sampling probabilities defined per key (stratum).
+   *
+   * A random seed is generated and used for sampling.
+   */
   def sampleByKey(withReplacement: Boolean, fractions: JMap[K, Double]): JavaPairRDD[K, V] =
     sampleByKey(withReplacement, fractions, Utils.random.nextLong())
 
+
   /**
-   * Return a subset of this RDD sampled by key (via stratified sampling).
+   * :: Experimental ::
+   * Returns a stratified sample of this RDD with sampling probabilities defined per key (stratum)
+   * and guarantees the exact sample sizes with high probability.
    *
-   * Create a sample of this RDD using variable sampling rates for different keys as specified by
-   * `fractions`, a key to sampling rate map.
+   * For each stratum, items associated with the same key, this method samples with or without
+   * replacement using the sampling probability specified in `fractions`, a key to sampling
+   * probability map. The desired sample size for each stratum is `math.ceil(p * n)`, where `p` is
+   * the sampling probability for that stratum and `n` is the size of the stratum. This method
+   * guarantee that the output sample has exactly the desired number of items for each stratum.
    *
-   * If `exact` is set to false, create the sample via simple random sampling, with one pass
-   * over the RDD, to produce a sample of size that's approximately equal to the sum of
-   * math.ceil(numItems * samplingRate) over all key values; otherwise, use additional passes over
-   * the RDD to create a sample size that's exactly equal to the sum of
-   * math.ceil(numItems * samplingRate) over all key values.
+   * This method requires two passes to the input RDD. So caching is recommended.
    *
-   * Use Utils.random.nextLong as the default seed for the random number generator
+   * @param withReplacement whether to sample with or without replacement
+   * @param fractions map of specific keys to sampling rates
+   * @param seed random seed
+   *
+   * @see [[org.apache.spark.api.java.JavaPairRDD#sampleByKey]]
    */
+  @Experimental
   def sampleByKeyExact(
       withReplacement: Boolean,
       fractions: JMap[K, Double],
       seed: Long): JavaPairRDD[K, V] =
     new JavaPairRDD[K, V](rdd.sampleByKeyExact(withReplacement, fractions, Utils.random.nextLong))
 
+  /**
+   * :: Experimental ::
+   * Returns a stratified sample of this RDD with sampling probabilities defined per key (stratum)
+   * and guarantees the exact sample sizes with high probability.
+   *
+   * A random seed is generated and used for sampling.
+   */
+  @Experimental
   def sampleByKeyExact(
       withReplacement: Boolean,
       fractions: JMap[K, Double]): JavaPairRDD[K, V] =

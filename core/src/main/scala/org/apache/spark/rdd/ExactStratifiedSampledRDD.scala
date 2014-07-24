@@ -49,6 +49,8 @@ private[rdd] class ExactStratifiedSampledRDD[K: ClassTag, V: ClassTag](
     @transient fractions: Map[K, Double],
     seed: Long = Utils.random.nextLong()) extends RDD[(K, V)](prev) {
 
+  // TODO: Implement the streaming version that requires only one pass.
+
   fractions.foreach { case (stratum, fraction) =>
     if (withReplacement) {
       require(fraction >= 0.0, "Fraction cannot be negative for sampling with replacement but " +
