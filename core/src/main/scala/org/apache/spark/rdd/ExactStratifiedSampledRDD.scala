@@ -68,15 +68,17 @@ private[rdd] class ExactStratifiedSampledRDD[K: ClassTag, V: ClassTag](
       val sampleSize = math.ceil(fractions(stratum) * count).toLong
       Task(stratum, count, sampleSize)
     }
-    val rv = Reviewer.create(withReplacement, tasks)
+    Reviewer.create(withReplacement, tasks)
+  }
+
+  {
     val results = prev.mapPartitionsWithIndex { case (idx, iter) =>
       val theSeed = byteswap64(seed ^ idx)
-      Iterator(rv.preselect(iter, theSeed))
+      Iterator(reviewer.preselect(iter, theSeed))
     }.reduce { case (results1, results2) =>
       results1.merge(results2)
     }
-    rv.review(results)
-    rv
+    reviewer.review(results)
   }
 
   override def compute(split: Partition, context: TaskContext): Iterator[(K, V)] = {
