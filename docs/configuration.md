@@ -336,13 +336,12 @@ Apart from these, the following properties are also available, and may be useful
 </tr>
 <tr>
   <td><code>spark.io.compression.codec</code></td>
-  <td>org.apache.spark.io.<br />LZFCompressionCodec</td>
+  <td>org.apache.spark.io.<br />SnappyCompressionCodec</td>
   <td>
     The codec used to compress internal data such as RDD partitions and shuffle outputs.
-    By default, Spark provides two codecs: <code>org.apache.spark.io.LZFCompressionCodec</code>
-    and <code>org.apache.spark.io.SnappyCompressionCodec</code>. Of these two choices,
-    Snappy offers faster compression and decompression, while LZF offers a better compression
-    ratio.
+    By default, Spark provides three codecs:  <code>org.apache.spark.io.LZ4CompressionCodec</code>,
+    <code>org.apache.spark.io.LZFCompressionCodec</code>,
+    and <code>org.apache.spark.io.SnappyCompressionCodec</code>.
   </td>
 </tr>
 <tr>
@@ -350,7 +349,15 @@ Apart from these, the following properties are also available, and may be useful
   <td>32768</td>
   <td>
     Block size (in bytes) used in Snappy compression, in the case when Snappy compression codec
-    is used.
+    is used. Lowering this block size will also lower shuffle memory usage when Snappy is used.
+  </td>
+</tr>
+<tr>
+  <td><code>spark.io.compression.lz4.block.size</code></td>
+  <td>32768</td>
+  <td>
+    Block size (in bytes) used in LZ4 compression, in the case when LZ4 compression codec
+    is used. Lowering this block size will also lower shuffle memory usage when LZ4 is used.
   </td>
 </tr>
 <tr>
@@ -379,6 +386,17 @@ Apart from these, the following properties are also available, and may be useful
     necessary if your object graphs have loops and useful for efficiency if they contain multiple
     copies of the same object. Can be disabled to improve performance if you know this is not the
     case.
+  </td>
+</tr>
+<tr>
+  <td><code>spark.kryo.registrationRequired</code></td>
+  <td>false</td>
+  <td>
+    Whether to require registration with Kryo. If set to 'true', Kryo will throw an exception
+    if an unregistered class is serialized. If set to false (the default), Kryo will write
+    unregistered class names along with each object. Writing class names can cause
+    significant performance overhead, so enabling this option can enforce strictly that a
+    user has not omitted classes from registration.
   </td>
 </tr>
 <tr>
@@ -412,7 +430,7 @@ Apart from these, the following properties are also available, and may be useful
 </tr>
 <tr>
   <td><code>spark.broadcast.factory</code></td>
-  <td>org.apache.spark.broadcast.<br />HttpBroadcastFactory</td>
+  <td>org.apache.spark.broadcast.<br />TorrentBroadcastFactory</td>
   <td>
     Which broadcast implementation to use.
   </td>
@@ -490,9 +508,9 @@ Apart from these, the following properties are also available, and may be useful
 <tr>
     <td>spark.hadoop.validateOutputSpecs</td>
     <td>true</td>
-    <td>If set to true, validates the output specification (e.g. checking if the output directory already exists) 
-    used in saveAsHadoopFile and other variants. This can be disabled to silence exceptions due to pre-existing 
-    output directories. We recommend that users do not disable this except if trying to achieve compatibility with 
+    <td>If set to true, validates the output specification (e.g. checking if the output directory already exists)
+    used in saveAsHadoopFile and other variants. This can be disabled to silence exceptions due to pre-existing
+    output directories. We recommend that users do not disable this except if trying to achieve compatibility with
     previous versions of Spark. Simply use Hadoop's FileSystem API to delete output directories by hand.</td>
 </tr>
 </table>
@@ -854,7 +872,7 @@ Apart from these, the following properties are also available, and may be useful
 </table>
 
 #### Cluster Managers
-Each cluster manager in Spark has additional configuration options. Configurations 
+Each cluster manager in Spark has additional configuration options. Configurations
 can be found on the pages for each mode:
 
  * [YARN](running-on-yarn.html#configuration)
