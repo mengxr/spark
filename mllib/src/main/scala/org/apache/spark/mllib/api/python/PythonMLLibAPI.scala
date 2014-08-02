@@ -20,13 +20,17 @@ package org.apache.spark.mllib.api.python
 import java.nio.{ByteBuffer, ByteOrder}
 
 import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.api.java.{JavaSparkContext, JavaRDD}
+import org.apache.spark.api.java.{JavaRDD, JavaSparkContext}
 import org.apache.spark.mllib.classification._
 import org.apache.spark.mllib.clustering._
 import org.apache.spark.mllib.linalg.{SparseVector, Vector, Vectors}
+import org.apache.spark.mllib.optimization._
+import org.apache.spark.mllib.linalg.{Matrix, SparseVector, Vector, Vectors}
 import org.apache.spark.mllib.random.{RandomRDDGenerators => RG}
 import org.apache.spark.mllib.recommendation._
 import org.apache.spark.mllib.regression._
+import org.apache.spark.mllib.stat.Statistics
+import org.apache.spark.mllib.stat.correlation.CorrelationNames
 import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.Utils
@@ -227,7 +231,7 @@ class PythonMLLibAPI extends Serializable {
       jsc: JavaSparkContext,
       path: String,
       minPartitions: Int): JavaRDD[Array[Byte]] =
-    MLUtils.loadLabeledPoints(jsc.sc, path, minPartitions).map(serializeLabeledPoint).toJavaRDD()
+    MLUtils.loadLabeledPoints(jsc.sc, path, minPartitions).map(serializeLabeledPoint)
 
   private def trainRegressionModel(
       trainFunc: (RDD[LabeledPoint], Vector) => GeneralizedLinearModel,
@@ -250,15 +254,27 @@ class PythonMLLibAPI extends Serializable {
       numIterations: Int,
       stepSize: Double,
       miniBatchFraction: Double,
-      initialWeightsBA: Array[Byte]): java.util.List[java.lang.Object] = {
+      initialWeightsBA: Array[Byte], 
+      regParam: Double,
+      regType: String,
+      intercept: Boolean): java.util.List[java.lang.Object] = {
+    val lrAlg = new LinearRegressionWithSGD()
+    lrAlg.setIntercept(intercept)
+    lrAlg.optimizer
+      .setNumIterations(numIterations)
+      .setRegParam(regParam)
+      .setStepSize(stepSize)
+    if (regType == "l2") {
+      lrAlg.optimizer.setUpdater(new SquaredL2Updater)
+    } else if (regType == "l1") {
+      lrAlg.optimizer.setUpdater(new L1Updater)
+    } else if (regType != "none") {
+      throw new java.lang.IllegalArgumentException("Invalid value for 'regType' parameter."
+        + " Can only be initialized using the following string values: [l1, l2, none].")
+    }
     trainRegressionModel(
       (data, initialWeights) =>
-        LinearRegressionWithSGD.train(
-          data,
-          numIterations,
-          stepSize,
-          miniBatchFraction,
-          initialWeights),
+        lrAlg.run(data, initialWeights),
       dataBytesJRDD,
       initialWeightsBA)
   }
@@ -454,6 +470,37 @@ class PythonMLLibAPI extends Serializable {
       alpha: Double): MatrixFactorizationModel = {
     val ratings = ratingsBytesJRDD.rdd.map(unpackRating)
     ALS.trainImplicit(ratings, rank, iterations, lambda, blocks, alpha)
+  }
+
+  /**
+   * Java stub for mllib Statistics.corr(X: RDD[Vector], method: String).
+   * Returns the correlation matrix serialized into a byte array understood by deserializers in
+   * pyspark.
+   */
+  def corr(X: JavaRDD[Array[Byte]], method: String): Array[Byte] = {
+    val inputMatrix = X.rdd.map(deserializeDoubleVector(_))
+    val result = Statistics.corr(inputMatrix, getCorrNameOrDefault(method))
+    serializeDoubleMatrix(to2dArray(result))
+  }
+
+  /**
+   * Java stub for mllib Statistics.corr(x: RDD[Double], y: RDD[Double], method: String).
+   */
+  def corr(x: JavaRDD[Array[Byte]], y: JavaRDD[Array[Byte]], method: String): Double = {
+    val xDeser = x.rdd.map(deserializeDouble(_))
+    val yDeser = y.rdd.map(deserializeDouble(_))
+    Statistics.corr(xDeser, yDeser, getCorrNameOrDefault(method))
+  }
+
+  // used by the corr methods to retrieve the name of the correlation method passed in via pyspark
+  private def getCorrNameOrDefault(method: String) = {
+    if (method == null) CorrelationNames.defaultCorrName else method
+  }
+
+  // Reformat a Matrix into Array[Array[Double]] for serialization
+  private[python] def to2dArray(matrix: Matrix): Array[Array[Double]] = {
+    val values = matrix.toArray
+    Array.tabulate(matrix.numRows, matrix.numCols)((i, j) => values(i + j * matrix.numRows))
   }
 
   // Used by the *RDD methods to get default seed if not passed in from pyspark
