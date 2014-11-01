@@ -70,6 +70,8 @@ object DataType {
 
     case JSortedObject(
         ("class", JString(udtClass)),
+        ("pyClass", _),
+        ("pyModule", _),
         ("type", JString("udt"))) =>
       Class.forName(udtClass).newInstance().asInstanceOf[UserDefinedType[_]]
   }
@@ -539,14 +541,22 @@ abstract class UserDefinedType[UserType] extends DataType with Serializable {
    * TODO: Can we make this take obj: UserType?  The issue is in ScalaReflection.convertToCatalyst,
    *       where we need to convert Any to UserType.
    */
+  def pyUDT: (String, String) = (null, null)
+
+  /** Convert the user type to a SQL datum */
+  // TODO: Can we make this take obj: UserType?  The issue is in ScalaReflection.convertToCatalyst,
+  //       where we need to convert Any to UserType.
   def serialize(obj: Any): Any
 
   /** Convert a SQL datum to the user type */
   def deserialize(datum: Any): UserType
 
   override private[sql] def jsonValue: JValue = {
+    val (pyModule, pyClass) = pyUDT
     ("type" -> "udt") ~
-      ("class" -> this.getClass.getName)
+      ("class" -> this.getClass.getName) ~
+      ("pyClass" -> pyClass) ~
+      ("pyModule" -> pyModule)
   }
 
   /**
