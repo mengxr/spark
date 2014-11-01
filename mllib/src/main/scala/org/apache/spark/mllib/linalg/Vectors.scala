@@ -316,6 +316,8 @@ private[spark] class DenseVectorUDT extends UserDefinedType[DenseVector] {
     }
   }
 
+  override def pyUDT: (String, String) = ("pyspark.mllib.linalg", "DenseVectorUDT")
+
   override def deserialize(datum: Any): DenseVector = {
     datum match {
       case values: Seq[_] =>

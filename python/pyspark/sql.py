@@ -38,6 +38,7 @@ import json
 from array import array
 from operator import itemgetter
 from itertools import imap
+import importlib
 
 from py4j.protocol import Py4JError
 from py4j.java_collections import ListConverter, MapConverter
@@ -51,7 +52,7 @@ from pyspark.traceback_utils import SCCallSiteSync
 __all__ = [
     "StringType", "BinaryType", "BooleanType", "TimestampType", "DecimalType",
     "DoubleType", "FloatType", "ByteType", "IntegerType", "LongType",
-    "ShortType", "ArrayType", "MapType", "StructField", "StructType",
+    "ShortType", "ArrayType", "MapType", "StructField", "StructType", "UserDefinedType",
     "SQLContext", "HiveContext", "SchemaRDD", "Row"]
 
 
@@ -376,6 +377,54 @@ class StructType(DataType):
         return StructType([StructField.fromJson(f) for f in json["fields"]])
 
 
+class UserDefinedType(DataType):
+    """
+    Spark SQL User-Defined Type (UDT)
+    """
+
+    @classmethod
+    def sqlType(self):
+        raise NotImplementedError("UDT must implement sqlType().")
+
+    @classmethod
+    def serialize(self, obj):
+        raise NotImplementedError("UDT must implement serialize().")
+
+    @classmethod
+    def deserialize(self, datum):
+        return
+
+    @classmethod
+    def module(cls):
+        return None
+
+    @classmethod
+    def scalaUDT(cls):
+        return None
+
+    @classmethod
+    def json(cls):
+        return json.dumps(cls.jsonValue(), separators=(',', ':'), sort_keys=True)
+
+    @classmethod
+    def jsonValue(cls):
+        schema = {
+            "type": "udt",
+            "pyModule": cls.module(),
+            "pyClass": cls.__name__}
+        if cls.scalaUDT() is not None:
+            schema['class'] = cls.scalaUDT()
+        return schema
+
+    @classmethod
+    def fromJson(cls, json):
+        pyModule = json['pyModule']
+        pyClass = json['pyClass']
+        m = importlib.import_module(pyModule)
+        UDT = getattr(m, pyClass)
+        return UDT()
+
+
 _all_primitive_types = dict((v.typeName(), v)
                             for v in globals().itervalues()
                             if type(v) is PrimitiveTypeSingleton and
@@ -427,6 +476,9 @@ def _parse_datatype_json_string(json_string):
     ...                           complex_arraytype, False)
     >>> check_datatype(complex_maptype)
     True
+    >>> from pyspark.mllib.linalg import DenseVectorUDT
+    >>> check_datatype(DenseVectorUDT())
+    True
     """
     return _parse_datatype_json_value(json.loads(json_string))
 
@@ -435,7 +487,13 @@ def _parse_datatype_json_value(json_value):
     if type(json_value) is unicode and json_value in _all_primitive_types.keys():
         return _all_primitive_types[json_value]()
     else:
-        return _all_complex_types[json_value["type"]].fromJson(json_value)
+        tpe = json_value["type"]
+        if tpe in _all_complex_types:
+            return _all_complex_types[tpe].fromJson(json_value)
+        elif tpe == 'udt':
+            return UserDefinedType.fromJson(json_value)
+        else:
+            raise ValueError("not supported type: %s" % tpe)
 
 
 # Mapping Python types to Spark SQL DateType
@@ -455,9 +513,18 @@ _type_mappings = {
 
 
 def _infer_type(obj):
-    """Infer the DataType from obj"""
+    """Infer the DataType from obj
+
+    >>> from pyspark.mllib.linalg import DenseVector
+    >>> v = DenseVector([1.0, 2.0])
+    >>> _infer_type(v)
+    DenseVectorUDT
+    """
     if obj is None:
         raise ValueError("Can not infer type for None")
+
+    if hasattr(obj, '__UDT__'):
+        return obj.__UDT__
 
     dataType = _type_mappings.get(type(obj))
     if dataType is not None:
@@ -505,7 +572,13 @@ def _infer_schema(row):
 
 
 def _create_converter(obj, dataType):
-    """Create an converter to drop the names of fields in obj """
+    """Create an converter to drop the names of fields in obj
+
+    >>> from pyspark.mllib.linalg import DenseVectorUDT
+    >>> conv = _create_converter([1.0, 2.0], DenseVectorUDT())
+    >>> conv([1.0, 2.0])
+    DenseVector([1.0,2.0])
+    """
     if isinstance(dataType, ArrayType):
         conv = _create_converter(obj[0], dataType.elementType)
         return lambda row: map(conv, row)
@@ -514,6 +587,11 @@ def _create_converter(obj, dataType):
         value = obj.values()[0]
         conv = _create_converter(value, dataType.valueType)
         return lambda row: dict((k, conv(v)) for k, v in row.iteritems())
+
+    elif isinstance(dataType, UserDefinedType):
+        def udt_conv(obj):
+            return dataType.deserialize(obj)
+        return udt_conv
 
     elif not isinstance(dataType, StructType):
         return lambda x: x
@@ -735,6 +813,10 @@ def _verify_type(obj, dataType):
     if obj is None:
         return
 
+    if isinstance(dataType, UserDefinedType):
+        # TODO: check UDT
+        return
+
     _type = type(dataType)
     assert _type in _acceptable_types, "unkown datatype: %s" % dataType
 
@@ -869,6 +951,11 @@ def _create_cls(dataType):
             return dict((k, _create_object(cls, v)) for k, v in d.items())
 
         return Dict
+
+    elif isinstance(dataType, UserDefinedType):
+        def deserialize(obj):
+            return dataType.deserialize(obj)
+        return deserialize
 
     elif not isinstance(dataType, StructType):
         raise Exception("unexpected data type: %s" % dataType)
@@ -1384,26 +1471,26 @@ class LocalHiveContext(HiveContext):
     An in-process metadata data is created with data stored in ./metadata.
     Warehouse data is stored in in ./warehouse.
 
-    >>> import os
-    >>> hiveCtx = LocalHiveContext(sc)
-    >>> try:
-    ...     supress = hiveCtx.sql("DROP TABLE src")
-    ... except Exception:
-    ...     pass
-    >>> kv1 = os.path.join(os.environ["SPARK_HOME"],
-    ...        'examples/src/main/resources/kv1.txt')
-    >>> supress = hiveCtx.sql(
-    ...     "CREATE TABLE IF NOT EXISTS src (key INT, value STRING)")
-    >>> supress = hiveCtx.sql("LOAD DATA LOCAL INPATH '%s' INTO TABLE src"
-    ...        % kv1)
-    >>> results = hiveCtx.sql("FROM src SELECT value"
-    ...      ).map(lambda r: int(r.value.split('_')[1]))
-    >>> num = results.count()
-    >>> reduce_sum = results.reduce(lambda x, y: x + y)
-    >>> num
-    500
-    >>> reduce_sum
-    130091
+    # >>> import os
+    # >>> hiveCtx = LocalHiveContext(sc)
+    # >>> try:
+    # ...     supress = hiveCtx.sql("DROP TABLE src")
+    # ... except Exception:
+    # ...     pass
+    # >>> kv1 = os.path.join(os.environ["SPARK_HOME"],
+    # ...        'examples/src/main/resources/kv1.txt')
+    # >>> supress = hiveCtx.sql(
+    # ...     "CREATE TABLE IF NOT EXISTS src (key INT, value STRING)")
+    # >>> supress = hiveCtx.sql("LOAD DATA LOCAL INPATH '%s' INTO TABLE src"
+    # ...        % kv1)
+    # >>> results = hiveCtx.sql("FROM src SELECT value"
+    # ...      ).map(lambda r: int(r.value.split('_')[1]))
+    # >>> num = results.count()
+    # >>> reduce_sum = results.reduce(lambda x, y: x + y)
+    # >>> num
+    # 500
+    # >>> reduce_sum
+    # 130091
     """
 
     def __init__(self, sparkContext, sqlContext=None):

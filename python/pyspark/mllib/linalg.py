@@ -29,6 +29,7 @@ import copy_reg
 
 import numpy as np
 
+from pyspark.sql import UserDefinedType, ArrayType, DoubleType, StructField, StructType
 from pyspark.serializers import AutoBatchedSerializer, PickleSerializer
 
 __all__ = ['Vector', 'DenseVector', 'SparseVector', 'Vectors']
@@ -122,11 +123,52 @@ class Vector(object):
         """
         raise NotImplementedError
 
+class DenseVectorUDT(UserDefinedType):
+    """
+    User-defined type for SQL.
+
+    >>> DenseVectorUDT.json()
+    '{"class":"org.apache.spark.mllib.linalg.DenseVectorUDT","pyClass":"DenseVectorUDT","pyModule":"pyspark.mllib.linalg","type":"udt"}'
+    >>> from pyspark import SparkContext
+    >>> from pyspark.sql import SQLContext, SchemaRDD
+    >>> sc = SparkContext('local[4]', 'DenseVectorUDT')
+    >>> sqlCtx = SQLContext(sc)
+    >>> data = (1.0, DenseVector([1.0, 2.0]))
+    >>> rdd = sc.parallelize([data,])
+    >>> schema = StructType([StructField("label", DoubleType(), False), StructField("features", DenseVectorUDT(), False)])
+    >>> schema
+    StructType(List(StructField(label,DoubleType,false),StructField(features,DenseVectorUDT,false)))
+    >>> srdd = sqlCtx.applySchema(rdd, schema)
+    >>> srdd.registerTempTable('points')
+    >>> sqlCtx.sql('SELECT features FROM points').collect()
+    """
+
+    @classmethod
+    def sqlType(self):
+        return ArrayType(DoubleType, False)
+
+    def serialize(self, obj):
+        return [float(x) for x in obj]
+
+    def deserialize(self, datum):
+        return DenseVector(datum)
+
+    @classmethod
+    def module(cls):
+        return 'pyspark.mllib.linalg'
+
+    @classmethod
+    def scalaUDT(cls):
+        return 'org.apache.spark.mllib.linalg.DenseVectorUDT'
+
 
 class DenseVector(Vector):
     """
     A dense vector represented by a value array.
     """
+
+    __UDT__ = DenseVectorUDT()
+
     def __init__(self, ar):
         if not isinstance(ar, array.array):
             ar = array.array('d', ar)
@@ -228,7 +270,7 @@ class DenseVector(Vector):
         return "[" + ",".join([str(v) for v in self.array]) + "]"
 
     def __repr__(self):
-        return "DenseVector(%r)" % self.array
+        return "DenseVector([%s])" % ",".join([str(v) for v in self.array])
 
     def __eq__(self, other):
         return isinstance(other, DenseVector) and self.array == other.array
@@ -491,7 +533,7 @@ class Vectors(object):
         returns a NumPy array.
 
         >>> Vectors.dense([1, 2, 3])
-        DenseVector(array('d', [1.0, 2.0, 3.0]))
+        DenseVector([1.0,2.0,3.0])
         """
         return DenseVector(elements)
 
