@@ -29,7 +29,6 @@ public classes of Spark SQL:
       Main entry point for accessing data stored in Apache Hive..
 """
 
-import sys
 import itertools
 import decimal
 import datetime
@@ -495,6 +494,10 @@ def _parse_datatype_json_string(json_string):
     >>> from pyspark.mllib.linalg import DenseVectorUDT
     >>> check_datatype(DenseVectorUDT())
     True
+    >>> structtype_with_udt = StructType([StructField("label", DoubleType(), False),
+    ...                                   StructField("features", DenseVectorUDT(), False)])
+    >>> check_datatype(structtype_with_udt)
+    True
     """
     return _parse_datatype_json_value(json.loads(json_string))
 
@@ -586,14 +589,66 @@ def _infer_schema(row):
     fields = [StructField(k, _infer_type(v), True) for k, v in items]
     return StructType(fields)
 
+def _need_python_to_sql_conversion(dataType):
+    """
+    Checks whether we need python to sql conversion for the given type.
+    For now, only UDTs need this conversion.
+
+    >>> _need_python_to_sql_conversion(DoubleType())
+    False
+    >>> schema0 = StructType([StructField("indices", ArrayType(IntegerType(), False), False),
+    ...                       StructField("values", ArrayType(DoubleType(), False), False)])
+    >>> _need_python_to_sql_conversion(schema0)
+    False
+    >>> from pyspark.mllib.linalg import DenseVectorUDT
+    >>> _need_python_to_sql_conversion(DenseVectorUDT())
+    True
+    >>> schema1 = ArrayType(DenseVectorUDT(), False)
+    >>> _need_python_to_sql_conversion(schema1)
+    True
+    >>> schema2 = StructType([StructField("label", DoubleType(), False),
+    ...                       StructField("features", DenseVectorUDT(), False)])
+    >>> _need_python_to_sql_conversion(schema2)
+    True
+    """
+    if isinstance(dataType, StructType):
+        return any([_need_python_to_sql_conversion(f.dataType) for f in dataType.fields])
+    elif isinstance(dataType, ArrayType):
+        return _need_python_to_sql_conversion(dataType.elementType)
+    elif isinstance(dataType, MapType):
+        return _need_python_to_sql_conversion(dataType.keyType) or \
+               _need_python_to_sql_conversion(dataType.valueType)
+    elif isinstance(dataType, UserDefinedType):
+        return True
+    else:
+        return False
+
 def _python_to_sql_converter(dataType):
     """
-    Returns a converter that converts a Python object into a SQL datum based on the schema
+    Returns a converter that converts a Python object into a SQL datum for the given type.
+
+    >>> conv = _python_to_sql_converter(DoubleType())
+    >>> conv(1.0)
+    1.0
+    >>> conv = _python_to_sql_converter(ArrayType(DoubleType(), False))
+    >>> conv([1.0, 2.0])
+    [1.0, 2.0]
+    >>> from pyspark.mllib.linalg import DenseVector, DenseVectorUDT
+    >>> conv = _python_to_sql_converter(DenseVectorUDT())
+    >>> conv(DenseVector([1.0, 2.0]))
+    [1.0, 2.0]
+    >>> schema = StructType([StructField("label", DoubleType(), False),
+    ...                      StructField("features", DenseVectorUDT(), False)])
+    >>> conv = _python_to_sql_converter(schema)
+    >>> conv((1.0, DenseVector([1.0, 2.0])))
+    (1.0, [1.0, 2.0])
     """
+    if not _need_python_to_sql_conversion(dataType):
+        return lambda x: x
+
     if isinstance(dataType, StructType):
         names, types = zip(*[(f.name, f.dataType) for f in dataType.fields])
         converters = map(_python_to_sql_converter, types)
-        print >> sys.stderr, converters
         def converter(obj):
             if isinstance(obj, dict):
                 return tuple(c(obj.get(n)) for n, c in zip(names, converters))
@@ -607,18 +662,18 @@ def _python_to_sql_converter(dataType):
                     return tuple(c(v) for c, v in zip(converters, obj))
             else:
                 raise ValueError("Unexpected tuple %r with type %r" % (obj, dataType))
-        def wrapped(obj):
-            print >> sys.stderr, "Converting:"
-            print >> sys.stderr, obj
-            result = converter(obj)
-            print >> sys.stderr, "to:"
-            print >> sys.stderr, result
-            return result
-        return wrapped
+        return converter
+    elif isinstance(dataType, ArrayType):
+        element_converter = _python_to_sql_converter(dataType.elementType)
+        return lambda a: [element_converter(v) for v in a]
+    elif isinstance(dataType, MapType):
+        key_converter = _python_to_sql_converter(dataType.keyType)
+        value_converter = _python_to_sql_converter(dataType.valueType)
+        return lambda m: dict([(key_converter(k), value_converter(v)) for k, v in m.items()])
     elif isinstance(dataType, UserDefinedType):
         return lambda obj: dataType.serialize(obj)
     else:
-        return lambda x: x
+        raise ValueError("Unexpected type %r" % dataType)
 
 def _create_converter(obj, dataType):
     """Create an converter to drop the names of fields in obj
@@ -897,7 +952,6 @@ _cached_cls = {}
 
 def _restore_object(dataType, obj):
     """ Restore object during unpickling. """
-    print >> sys.stderr, '_restore_object called with %r and %r' % (dataType, obj)
     # use id(dataType) as key to speed up lookup in dict
     # Because of batched pickling, dataType will be the
     # same object in most cases.
@@ -991,8 +1045,6 @@ def _create_cls(dataType):
     {'key': Row(c=1, d=2.0)}
     """
 
-    print >> sys.stderr, "_create_cls called with %r" % dataType
-
     if isinstance(dataType, ArrayType):
         cls = _create_cls(dataType.elementType)
 
@@ -1017,11 +1069,7 @@ def _create_cls(dataType):
         return datetime.date
 
     elif isinstance(dataType, UserDefinedType):
-        print >> sys.stderr, "create with user-defined type: %r" % dataType
-        def conv(datum):
-            print >> sys.stderr, "converting %r" % datum
-            return dataType.deserialize(datum)
-        return conv
+        return lambda datum: dataType.deserialize(datum)
 
     elif not isinstance(dataType, StructType):
         raise Exception("unexpected data type: %s" % dataType)
@@ -1277,19 +1325,18 @@ class SQLContext(object):
         rows = rdd.take(10)
         # Row() cannot been deserialized by Pyrolite
         if rows and isinstance(rows[0], tuple) and rows[0].__class__.__name__ == 'Row':
-            print >> sys.stderr, 'mapping row rdd to tuple rdd'
             rdd = rdd.map(tuple)
             rows = rdd.take(10)
 
         for row in rows:
             _verify_type(row, schema)
 
-        # batched = isinstance(rdd._jrdd_deserializer, BatchedSerializer)
+        # convert python objects to sql data
         converter = _python_to_sql_converter(schema)
-        for row in rows:
-            print row
-            print converter(row)
-        jrdd = self._pythonToJava(rdd.map(converter)._jrdd, True)
+        rdd = rdd.map(converter)
+
+        batched = isinstance(rdd._jrdd_deserializer, BatchedSerializer)
+        jrdd = self._pythonToJava(rdd._jrdd, batched)
         srdd = self._ssql_ctx.applySchemaToPythonRDD(jrdd.rdd(), schema.json())
         return SchemaRDD(srdd.toJavaSchemaRDD(), self)
 
