@@ -20,15 +20,13 @@ package org.apache.spark.mllib.linalg
 import java.lang.{Double => JavaDouble, Integer => JavaInteger, Iterable => JavaIterable}
 import java.util
 
-import org.apache.spark.sql.catalyst.expressions.GenericMutableRow
-
 import scala.annotation.varargs
 import scala.collection.JavaConverters._
 
 import breeze.linalg.{DenseVector => BDV, SparseVector => BSV, Vector => BV}
 
+import org.apache.spark.sql.catalyst.annotation.SQLUserDefinedType
 import org.apache.spark.sql.catalyst.types._
-import org.apache.spark.sql.Row
 import org.apache.spark.mllib.util.NumericParser
 import org.apache.spark.SparkException
 
@@ -195,6 +193,7 @@ object Vectors {
 /**
  * A dense vector represented by a value array.
  */
+@SQLUserDefinedType(udt = classOf[DenseVectorUDT])
 class DenseVector(val values: Array[Double]) extends Vector {
 
   override def size: Int = values.length

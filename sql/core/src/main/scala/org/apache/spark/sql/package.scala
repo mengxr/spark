@@ -418,6 +418,9 @@ package object sql {
   @DeveloperApi
   val StructField = catalyst.types.StructField
 
+  @DeveloperApi
+  type UserDefinedType[T] = catalyst.types.UserDefinedType[T]
+
   /**
    * :: DeveloperApi ::
    *

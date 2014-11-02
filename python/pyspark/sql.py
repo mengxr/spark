@@ -29,6 +29,7 @@ public classes of Spark SQL:
       Main entry point for accessing data stored in Apache Hive..
 """
 
+import sys
 import itertools
 import decimal
 import datetime
@@ -585,6 +586,39 @@ def _infer_schema(row):
     fields = [StructField(k, _infer_type(v), True) for k, v in items]
     return StructType(fields)
 
+def _python_to_sql_converter(dataType):
+    """
+    Returns a converter that converts a Python object into a SQL datum based on the schema
+    """
+    if isinstance(dataType, StructType):
+        names, types = zip(*[(f.name, f.dataType) for f in dataType.fields])
+        converters = map(_python_to_sql_converter, types)
+        print >> sys.stderr, converters
+        def converter(obj):
+            if isinstance(obj, dict):
+                return tuple(c(obj.get(n)) for n, c in zip(names, converters))
+            elif isinstance(obj, tuple):
+                if hasattr(obj, "_fields") or hasattr(obj, "__FIELDS__"):
+                    return tuple(c(v) for c, v in zip(converters, obj))
+                elif all(isinstance(x, tuple) and len(x) == 2 for x in obj): # k-v pairs
+                    d = dict(obj)
+                    return tuple(c(d.get(n)) for n, c in zip(names, converters))
+                else:
+                    return tuple(c(v) for c, v in zip(converters, obj))
+            else:
+                raise ValueError("Unexpected tuple %r with type %r" % (obj, dataType))
+        def wrapped(obj):
+            print >> sys.stderr, "Converting:"
+            print >> sys.stderr, obj
+            result = converter(obj)
+            print >> sys.stderr, "to:"
+            print >> sys.stderr, result
+            return result
+        return wrapped
+    elif isinstance(dataType, UserDefinedType):
+        return lambda obj: dataType.serialize(obj)
+    else:
+        return lambda x: x
 
 def _create_converter(obj, dataType):
     """Create an converter to drop the names of fields in obj
@@ -863,6 +897,7 @@ _cached_cls = {}
 
 def _restore_object(dataType, obj):
     """ Restore object during unpickling. """
+    print >> sys.stderr, '_restore_object called with %r and %r' % (dataType, obj)
     # use id(dataType) as key to speed up lookup in dict
     # Because of batched pickling, dataType will be the
     # same object in most cases.
@@ -906,6 +941,8 @@ def _has_struct_or_date(dt):
     elif isinstance(dt, MapType):
         return _has_struct_or_date(dt.valueType)
     elif isinstance(dt, DateType):
+        return True
+    elif isinstance(dt, UserDefinedType):
         return True
     return False
 
@@ -954,6 +991,8 @@ def _create_cls(dataType):
     {'key': Row(c=1, d=2.0)}
     """
 
+    print >> sys.stderr, "_create_cls called with %r" % dataType
+
     if isinstance(dataType, ArrayType):
         cls = _create_cls(dataType.elementType)
 
@@ -978,9 +1017,11 @@ def _create_cls(dataType):
         return datetime.date
 
     elif isinstance(dataType, UserDefinedType):
-        def deserialize(obj):
-            return dataType.deserialize(obj)
-        return deserialize
+        print >> sys.stderr, "create with user-defined type: %r" % dataType
+        def conv(datum):
+            print >> sys.stderr, "converting %r" % datum
+            return dataType.deserialize(datum)
+        return conv
 
     elif not isinstance(dataType, StructType):
         raise Exception("unexpected data type: %s" % dataType)
@@ -1236,14 +1277,19 @@ class SQLContext(object):
         rows = rdd.take(10)
         # Row() cannot been deserialized by Pyrolite
         if rows and isinstance(rows[0], tuple) and rows[0].__class__.__name__ == 'Row':
+            print >> sys.stderr, 'mapping row rdd to tuple rdd'
             rdd = rdd.map(tuple)
             rows = rdd.take(10)
 
         for row in rows:
             _verify_type(row, schema)
 
-        batched = isinstance(rdd._jrdd_deserializer, BatchedSerializer)
-        jrdd = self._pythonToJava(rdd._jrdd, batched)
+        # batched = isinstance(rdd._jrdd_deserializer, BatchedSerializer)
+        converter = _python_to_sql_converter(schema)
+        for row in rows:
+            print row
+            print converter(row)
+        jrdd = self._pythonToJava(rdd.map(converter)._jrdd, False)
         srdd = self._ssql_ctx.applySchemaToPythonRDD(jrdd.rdd(), schema.json())
         return SchemaRDD(srdd.toJavaSchemaRDD(), self)
 

@@ -32,7 +32,7 @@ import numpy as np
 from pyspark.sql import UserDefinedType, ArrayType, DoubleType, StructField, StructType
 from pyspark.serializers import AutoBatchedSerializer, PickleSerializer
 
-__all__ = ['Vector', 'DenseVector', 'SparseVector', 'Vectors']
+__all__ = ['Vector', 'DenseVector', 'SparseVector', 'Vectors', 'DenseVectorUDT']
 
 
 if sys.version_info[:2] == (2, 7):
@@ -141,7 +141,7 @@ class DenseVectorUDT(UserDefinedType):
 
     @classmethod
     def sqlType(self):
-        return ArrayType(DoubleType, False)
+        return ArrayType(DoubleType(), False)
 
     def serialize(self, obj):
         return [float(x) for x in obj]
