@@ -176,7 +176,7 @@ object EvaluatePython {
       new java.sql.Timestamp(c.getTime().getTime())
 
     case (_, udt: UserDefinedType[_]) =>
-      udt.serialize(obj)
+      fromJava(obj, udt.sqlType)
 
     case (c: Int, ByteType) => c.toByte
     case (c: Long, ByteType) => c.toByte

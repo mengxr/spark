@@ -313,6 +313,8 @@ private[spark] class DenseVectorUDT extends UserDefinedType[DenseVector] {
     datum match {
       case values: Seq[_] =>
         new DenseVector(values.asInstanceOf[Seq[Double]].toArray)
+      case values: util.ArrayList[_] =>
+        new DenseVector(values.asInstanceOf[util.ArrayList[Double]].asScala.toArray)
     }
   }
 

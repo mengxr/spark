@@ -1289,7 +1289,7 @@ class SQLContext(object):
         for row in rows:
             print row
             print converter(row)
-        jrdd = self._pythonToJava(rdd.map(converter)._jrdd, False)
+        jrdd = self._pythonToJava(rdd.map(converter)._jrdd, True)
         srdd = self._ssql_ctx.applySchemaToPythonRDD(jrdd.rdd(), schema.json())
         return SchemaRDD(srdd.toJavaSchemaRDD(), self)
 

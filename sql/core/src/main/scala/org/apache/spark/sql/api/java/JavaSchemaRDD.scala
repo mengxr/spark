@@ -51,7 +51,10 @@ class JavaSchemaRDD(
 
   override def wrapRDD(rdd: RDD[Row]): JavaRDD[Row] = JavaRDD.fromRDD(rdd)
 
-  val rdd = baseSchemaRDD.map(new Row(_))
+  val rdd = baseSchemaRDD.map { row =>
+    println(row)
+    new Row(row)
+  }
 
   override def toString: String = baseSchemaRDD.toString
 
