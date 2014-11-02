@@ -20,11 +20,15 @@ package org.apache.spark.mllib.linalg
 import java.lang.{Double => JavaDouble, Integer => JavaInteger, Iterable => JavaIterable}
 import java.util
 
+import org.apache.spark.sql.catalyst.expressions.GenericMutableRow
+
 import scala.annotation.varargs
 import scala.collection.JavaConverters._
 
 import breeze.linalg.{DenseVector => BDV, SparseVector => BSV, Vector => BV}
 
+import org.apache.spark.sql.catalyst.types._
+import org.apache.spark.sql.Row
 import org.apache.spark.mllib.util.NumericParser
 import org.apache.spark.SparkException
 
@@ -247,47 +251,47 @@ class SparseVector(
  * User-defined type for [[Vector]] which allows easy interaction with SQL
  * via [[org.apache.spark.sql.SchemaRDD]].
  */
-private[spark] class VectorUDT extends UserDefinedType[Vector] {
-
-  /**
-   * vectorType: 0 = dense, 1 = sparse.
-   * dense, sparse: One element holds the vector, and the other is null.
-   */
-  override def sqlType: StructType = StructType(Seq(
-    StructField("vectorType", ByteType, nullable = false),
-    StructField("dense", new DenseVectorUDT, nullable = true),
-    StructField("sparse", new SparseVectorUDT, nullable = true)))
-
-  override def serialize(obj: Any): Row = {
-    val row = new GenericMutableRow(3)
-    obj match {
-      case v: DenseVector =>
-        row.setByte(0, 0)
-        row.update(1, new DenseVectorUDT().serialize(obj))
-        row.setNullAt(2)
-      case v: SparseVector =>
-        row.setByte(0, 1)
-        row.setNullAt(1)
-        row.update(2, new SparseVectorUDT().serialize(obj))
-    }
-    row
-  }
-
-  override def deserialize(datum: Any): Vector = {
-    datum match {
-      case row: Row =>
-        require(row.length == 3,
-          s"VectorUDT.deserialize given row with length ${row.length} but requires length == 3")
-        val vectorType = row.getByte(0)
-        vectorType match {
-          case 0 =>
-            new DenseVectorUDT().deserialize(row.getAs[Row](1))
-          case 1 =>
-            new SparseVectorUDT().deserialize(row.getAs[Row](2))
-        }
-    }
-  }
-}
+//private[spark] class VectorUDT extends UserDefinedType[Vector] {
+//
+//  /**
+//   * vectorType: 0 = dense, 1 = sparse.
+//   * dense, sparse: One element holds the vector, and the other is null.
+//   */
+//  override def sqlType: StructType = StructType(Seq(
+//    StructField("vectorType", ByteType, nullable = false),
+//    StructField("dense", new DenseVectorUDT, nullable = true),
+//    StructField("sparse", new SparseVectorUDT, nullable = true)))
+//
+//  override def serialize(obj: Any): Row = {
+//    val row = new GenericMutableRow(3)
+//    obj match {
+//      case v: DenseVector =>
+//        row.setByte(0, 0)
+//        row.update(1, new DenseVectorUDT().serialize(obj))
+//        row.setNullAt(2)
+//      case v: SparseVector =>
+//        row.setByte(0, 1)
+//        row.setNullAt(1)
+//        row.update(2, new SparseVectorUDT().serialize(obj))
+//    }
+//    row
+//  }
+//
+//  override def deserialize(datum: Any): Vector = {
+//    datum match {
+//      case row: Row =>
+//        require(row.length == 3,
+//          s"VectorUDT.deserialize given row with length ${row.length} but requires length == 3")
+//        val vectorType = row.getByte(0)
+//        vectorType match {
+//          case 0 =>
+//            new DenseVectorUDT().deserialize(row.getAs[Row](1))
+//          case 1 =>
+//            new SparseVectorUDT().deserialize(row.getAs[Row](2))
+//        }
+//    }
+//  }
+//}
 
 /**
  * User-defined type for [[DenseVector]] which allows easy interaction with SQL
@@ -312,37 +316,39 @@ private[spark] class DenseVectorUDT extends UserDefinedType[DenseVector] {
         new DenseVector(values.asInstanceOf[Seq[Double]].toArray)
     }
   }
+
+  override def userClass: Class[DenseVector] = classOf[DenseVector]
 }
 
 /**
  * User-defined type for [[SparseVector]] which allows easy interaction with SQL
  * via [[org.apache.spark.sql.SchemaRDD]].
  */
-private[spark] class SparseVectorUDT extends UserDefinedType[SparseVector] {
-
-  override def sqlType: StructType = StructType(Seq(
-    StructField("size", IntegerType, nullable = false),
-    StructField("indices", ArrayType(IntegerType, containsNull = false), nullable = false),
-    StructField("values", ArrayType(DoubleType, containsNull = false), nullable = false)))
-
-  override def serialize(obj: Any): Row = obj match {
-    case v: SparseVector =>
-      val row: GenericMutableRow = new GenericMutableRow(3)
-      row.setInt(0, v.size)
-      row.update(1, v.indices.toSeq)
-      row.update(2, v.values.toSeq)
-      row
-  }
-
-  override def deserialize(datum: Any): SparseVector = {
-    datum match {
-      case row: Row =>
-        require(row.length == 3,
-          s"SparseVectorUDT.deserialize given row with length ${row.length} but expect 3.")
-        val vSize = row.getInt(0)
-        val indices = row.getAs[Seq[Int]](1).toArray
-        val values = row.getAs[Seq[Double]](2).toArray
-        new SparseVector(vSize, indices, values)
-    }
-  }
-}
+//private[spark] class SparseVectorUDT extends UserDefinedType[SparseVector] {
+//
+//  override def sqlType: StructType = StructType(Seq(
+//    StructField("size", IntegerType, nullable = false),
+//    StructField("indices", ArrayType(IntegerType, containsNull = false), nullable = false),
+//    StructField("values", ArrayType(DoubleType, containsNull = false), nullable = false)))
+//
+//  override def serialize(obj: Any): Row = obj match {
+//    case v: SparseVector =>
+//      val row: GenericMutableRow = new GenericMutableRow(3)
+//      row.setInt(0, v.size)
+//      row.update(1, v.indices.toSeq)
+//      row.update(2, v.values.toSeq)
+//      row
+//  }
+//
+//  override def deserialize(datum: Any): SparseVector = {
+//    datum match {
+//      case row: Row =>
+//        require(row.length == 3,
+//          s"SparseVectorUDT.deserialize given row with length ${row.length} but expect 3.")
+//        val vSize = row.getInt(0)
+//        val indices = row.getAs[Seq[Int]](1).toArray
+//        val values = row.getAs[Seq[Double]](2).toArray
+//        new SparseVector(vSize, indices, values)
+//    }
+//  }
+//}
