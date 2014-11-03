@@ -30,6 +30,7 @@ from pyspark.sql import SQLContext
 from pyspark.mllib.util import MLUtils
 from pyspark.mllib.stat import Statistics
 
+
 def summarize(dataset):
     print "schema: %s" % dataset.schema().json()
     labels = dataset.map(lambda r: r.label)
