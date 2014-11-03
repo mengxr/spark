@@ -23,12 +23,13 @@ import org.apache.hadoop.conf.Configuration
 
 import org.apache.spark.annotation.{DeveloperApi, Experimental}
 import org.apache.spark.api.java.{JavaRDD, JavaSparkContext}
-import org.apache.spark.sql.json.JsonRDD
-import org.apache.spark.sql.{StructType => SStructType, SQLContext}
+import org.apache.spark.sql.{SQLContext, StructType => SStructType}
 import org.apache.spark.sql.catalyst.annotation.SQLUserDefinedType
 import org.apache.spark.sql.catalyst.expressions.{AttributeReference, GenericRow, Row => ScalaRow}
 import org.apache.spark.sql.execution.LogicalRDD
+import org.apache.spark.sql.json.JsonRDD
 import org.apache.spark.sql.parquet.ParquetRelation
+import org.apache.spark.sql.sources.{LogicalRelation, BaseRelation}
 import org.apache.spark.sql.types.util.DataTypeConversions
 import org.apache.spark.sql.types.util.DataTypeConversions.asScalaDataType
 import org.apache.spark.util.Utils
@@ -39,6 +40,10 @@ import org.apache.spark.util.Utils
 class JavaSQLContext(val sqlContext: SQLContext) extends UDFRegistration {
 
   def this(sparkContext: JavaSparkContext) = this(new SQLContext(sparkContext.sc))
+
+  def baseRelationToSchemaRDD(baseRelation: BaseRelation): JavaSchemaRDD = {
+    new JavaSchemaRDD(sqlContext, LogicalRelation(baseRelation))
+  }
 
   /**
    * Executes a SQL query using Spark, returning the result as a SchemaRDD.  The dialect that is
@@ -88,9 +93,8 @@ class JavaSQLContext(val sqlContext: SQLContext) extends UDFRegistration {
   /**
    * Applies a schema to an RDD of Java Beans.
    *
-   * WARNING: The ordering of elements in the schema may differ from Scala.
-   *          If you create a [[org.apache.spark.sql.SchemaRDD]] using [[SQLContext]]
-   *          with the same Java Bean, row elements may be in a different order.
+   * WARNING: Since there is no guaranteed ordering for fields in a Java Bean,
+   *          SELECT * queries will return the columns in an undefined order.
    */
   def applySchema(rdd: JavaRDD[_], beanClass: Class[_]): JavaSchemaRDD = {
     val attributeSeq = getSchema(beanClass)
@@ -244,7 +248,7 @@ class JavaSQLContext(val sqlContext: SQLContext) extends UDFRegistration {
         case c: Class[_] if c == classOf[java.lang.Boolean] =>
           (org.apache.spark.sql.BooleanType, true)
         case c: Class[_] if c == classOf[java.math.BigDecimal] =>
-          (org.apache.spark.sql.DecimalType, true)
+          (org.apache.spark.sql.DecimalType(), true)
         case c: Class[_] if c == classOf[java.sql.Date] =>
           (org.apache.spark.sql.DateType, true)
         case c: Class[_] if c == classOf[java.sql.Timestamp] =>

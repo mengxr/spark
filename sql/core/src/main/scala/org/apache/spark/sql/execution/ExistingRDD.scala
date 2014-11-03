@@ -19,11 +19,13 @@ package org.apache.spark.sql.execution
 
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{Row, SQLContext, StructType}
+import org.apache.spark.sql.{DataType, StructType, Row, SQLContext}
 import org.apache.spark.sql.catalyst.ScalaReflection
+import org.apache.spark.sql.catalyst.ScalaReflection.Schema
 import org.apache.spark.sql.catalyst.analysis.MultiInstanceRelation
 import org.apache.spark.sql.catalyst.expressions.{Attribute, GenericMutableRow}
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Statistics}
+import org.apache.spark.sql.catalyst.types.UserDefinedType
 
 /**
  * :: DeveloperApi ::
@@ -51,12 +53,6 @@ object RDDConversions {
       }
     }
   }
-
-  /*
-  def toLogicalPlan[A <: Product : TypeTag](productRdd: RDD[A]): LogicalPlan = {
-    LogicalRDD(ScalaReflection.attributesFor[A], productToRowRdd(productRdd))
-  }
-  */
 }
 
 case class LogicalRDD(output: Seq[Attribute], rdd: RDD[Row])(sqlContext: SQLContext)

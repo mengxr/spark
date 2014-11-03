@@ -21,7 +21,9 @@ import scala.collection.JavaConverters._
 
 import org.apache.spark.sql._
 import org.apache.spark.sql.api.java.{DataType => JDataType, StructField => JStructField,
-  UDTWrappers, MetadataBuilder => JMetaDataBuilder}
+  MetadataBuilder => JMetaDataBuilder, UDTWrappers, JavaToScalaUDTWrapper}
+import org.apache.spark.sql.api.java.{DecimalType => JDecimalType}
+import org.apache.spark.sql.catalyst.types.decimal.Decimal
 import org.apache.spark.sql.catalyst.ScalaReflection
 import org.apache.spark.sql.catalyst.types.UserDefinedType
 
@@ -42,7 +44,6 @@ protected[sql] object DataTypeConversions {
    * Returns the equivalent DataType in Java for the given DataType in Scala.
    */
   def asJavaDataType(scalaDataType: DataType): JDataType = scalaDataType match {
-    // Check UDT first since UDTs can override other types
     case udtType: UserDefinedType[_] =>
       UDTWrappers.wrapAsJava(udtType)
 
@@ -51,7 +52,8 @@ protected[sql] object DataTypeConversions {
     case BooleanType => JDataType.BooleanType
     case DateType => JDataType.DateType
     case TimestampType => JDataType.TimestampType
-    case DecimalType => JDataType.DecimalType
+    case DecimalType.Fixed(precision, scale) => new JDecimalType(precision, scale)
+    case DecimalType.Unlimited => new JDecimalType()
     case DoubleType => JDataType.DoubleType
     case FloatType => JDataType.FloatType
     case ByteType => JDataType.ByteType
@@ -84,7 +86,6 @@ protected[sql] object DataTypeConversions {
    * Returns the equivalent DataType in Scala for the given DataType in Java.
    */
   def asScalaDataType(javaDataType: JDataType): DataType = javaDataType match {
-    // Check UDT first since UDTs can override other types
     case udtType: org.apache.spark.sql.api.java.UserDefinedType[_] =>
       UDTWrappers.wrapAsScala(udtType)
 
@@ -99,7 +100,11 @@ protected[sql] object DataTypeConversions {
     case timestampType: org.apache.spark.sql.api.java.TimestampType =>
       TimestampType
     case decimalType: org.apache.spark.sql.api.java.DecimalType =>
-      DecimalType
+      if (decimalType.isFixed) {
+        DecimalType(decimalType.getPrecision, decimalType.getScale)
+      } else {
+        DecimalType.Unlimited
+      }
     case doubleType: org.apache.spark.sql.api.java.DoubleType =>
       DoubleType
     case floatType: org.apache.spark.sql.api.java.FloatType =>
@@ -127,6 +132,7 @@ protected[sql] object DataTypeConversions {
   /** Converts Java objects to catalyst rows / types */
   def convertJavaToCatalyst(a: Any, dataType: DataType): Any = (a, dataType) match {
     case (obj, udt: UserDefinedType[_]) => ScalaReflection.convertToCatalyst(obj, udt) // Scala type
+    case (d: java.math.BigDecimal, _) => Decimal(BigDecimal(d))
     case (d: java.math.BigDecimal, _) => BigDecimal(d)
     case (other, _) => other
   }

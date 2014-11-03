@@ -19,6 +19,8 @@ package org.apache.spark.sql.execution
 
 import java.util.{List => JList, Map => JMap}
 
+import org.apache.spark.sql.catalyst.types.decimal.Decimal
+
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
 
@@ -116,7 +118,7 @@ object EvaluatePython {
   def toJava(obj: Any, dataType: DataType): Any = (obj, dataType) match {
     case (null, _) => null
 
-    case (row: Row, struct: StructType) =>
+    case (row: Seq[Any], struct: StructType) =>
       val fields = struct.fields.map(field => field.dataType)
       row.zip(fields).map {
         case (obj, dataType) => toJava(obj, dataType)
@@ -134,6 +136,8 @@ object EvaluatePython {
     }.asJava
 
     case (ud, udt: UserDefinedType[_]) => toJava(udt.serialize(ud), udt.sqlType)
+
+    case (dec: BigDecimal, dt: DecimalType) => dec.underlying()  // Pyrolite can handle BigDecimal
 
     // Pyrolite can handle Timestamp
     case (other, _) => other
