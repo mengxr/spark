@@ -19,16 +19,51 @@ package org.apache.spark.ml
 
 import org.apache.spark.sql.SchemaRDD
 
+/**
+ * Abstract class for transformers that transform one dataset into another.
+ */
 abstract class Transformer extends Identifiable with Params {
 
+  /**
+   * Transforms the dataset with the default parameters.
+   * @param dataset input dataset
+   * @return transformed dataset
+   */
+  def transform(dataset: SchemaRDD): SchemaRDD = {
+    transform(dataset, ParamMap.empty)
+  }
+
+  /**
+   * Transforms the dataset with provided parameter map.
+   * @param dataset input dataset
+   * @param paramMap parameters
+   * @return transformed dataset
+   */
   def transform(dataset: SchemaRDD, paramMap: ParamMap): SchemaRDD
 
-  def transform(dataset: SchemaRDD, paramPairs: ParamPair[_]*): SchemaRDD = {
+  /**
+   * Transforms the dataset with provided parameter pairs.
+   * @param dataset input dataset
+   * @param firstParamPair first parameter pair
+   * @param otherParamPairs second parameter pair
+   * @return transformed dataset
+   */
+  def transform(
+      dataset: SchemaRDD,
+      firstParamPair: ParamPair[_],
+      otherParamPairs: ParamPair[_]*): SchemaRDD = {
     val map = new ParamMap()
-    paramPairs.foreach(map.put(_))
+    map.put(firstParamPair)
+    otherParamPairs.foreach(map.put(_))
     transform(dataset, map)
   }
 
+  /**
+   * Transforms the dataset with multiple sets of parameters.
+   * @param dataset input dataset
+   * @param paramMaps an array of parameter maps
+   * @return transformed dataset
+   */
   def transform(dataset: SchemaRDD, paramMaps: Array[ParamMap]): Array[SchemaRDD] = {
     paramMaps.map(transform(dataset, _))
   }

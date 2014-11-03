@@ -26,9 +26,9 @@ import org.apache.spark.sql.catalyst.analysis.Star
 import org.apache.spark.sql.catalyst.dsl._
 import org.apache.spark.sql.catalyst.expressions.Row
 
-class LogisticRegression(override val id: String) extends Estimator {
+class LogisticRegression(override val uid: String) extends Estimator {
 
-  def this() = this("lr-" + Identifiable.randomId())
+  def this() = this("lr-" + Identifiable.randomUId())
 
   val maxIter: Param[Int] = new Param(this, "maxIter", "max number of iterations", Some(100))
 
@@ -51,11 +51,11 @@ class LogisticRegression(override val id: String) extends Estimator {
       .setRegParam(regParam)
       .setNumIterations(maxIter)
     val model = lr.run(instances)
-    new LogisticRegressionModel(id + ".model", model.weights)
+    new LogisticRegressionModel(uid + ".model", model.weights)
   }
 }
 
-class LogisticRegressionModel(override val id: String, weights: Vector) extends Transformer {
+class LogisticRegressionModel(override val uid: String, weights: Vector) extends Model {
   override def transform(dataset: SchemaRDD, paramMap: ParamMap): SchemaRDD = {
     val udt = new VectorUDT()
     val score: Any => Double = (datum) => {

@@ -23,9 +23,9 @@ import scala.collection.mutable.ListBuffer
 
 trait PipelineStage extends Identifiable
 
-class Pipeline(override val id: String) extends Estimator {
+class Pipeline(override val uid: String) extends Estimator {
 
-  def this() = this("Pipeline-" + Identifiable.randomId())
+  def this() = this("Pipeline-" + Identifiable.randomUId())
 
   val stages: Param[Array[PipelineStage]] =
     new Param[Array[PipelineStage]](this, "stages", "stages of the pipeline", None)
@@ -69,9 +69,9 @@ class Pipeline(override val id: String) extends Estimator {
 
 object Pipeline {
 
-  class Model(override val id: String, val transformers: Array[Transformer]) extends Transformer {
+  class Model(override val uid: String, val transformers: Array[Transformer]) extends Transformer {
 
-    def this(transformers: Array[Transformer]) = this("Pipeline.Model-" + Identifiable.randomId(), transformers)
+    def this(transformers: Array[Transformer]) = this("Pipeline.Model-" + Identifiable.randomUId(), transformers)
 
     override def transform(dataset: SchemaRDD, paramMap: ParamMap): SchemaRDD = {
       transformers.foldLeft(dataset) { (dataset, transformer) =>

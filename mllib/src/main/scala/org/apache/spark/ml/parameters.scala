@@ -129,6 +129,10 @@ class ParamMap private (params: mutable.Map[Identifiable, mutable.Map[String, An
   }
 }
 
+object ParamMap {
+  def empty: ParamMap = new ParamMap()
+}
+
 /**
  * Builder for a param grid used in grid search.
  */

@@ -17,23 +17,19 @@
 
 package org.apache.spark.ml
 
-import java.util.UUID
+import org.apache.spark.sql.SchemaRDD
 
 /**
- * Something with a unique id.
+ * Abstract class for evaluators that compute metrics from predictions.
+ * @tparam T metric type
  */
-trait Identifiable extends Serializable {
+abstract class Evaluator[T >: Comparable[T]] {
 
   /**
-   * A unique id for the object.
+   * Evaluate the output
+   * @param dataset a dataset that contains labels/observations and predictions.
+   * @param paramMap parameter map that specifies the input columns and output metrics
+   * @return metric
    */
-  val uid: String
-}
-
-object Identifiable {
-
-  /**
-   * Returns a random uid, drawn uniformly from 4+ billion candidates.
-   */
-  private[ml] def randomUId(): String = UUID.randomUUID().toString.take(8)
+  def evaluate(dataset: SchemaRDD, paramMap: ParamMap): T
 }

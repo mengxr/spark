@@ -19,18 +19,57 @@ package org.apache.spark.ml
 
 import org.apache.spark.sql.SchemaRDD
 
-abstract class Estimator extends Identifiable with Params {
+/**
+ * Abstract class for estimators that fits models to data.
+ * @tparam M model type
+ */
+abstract class Estimator[M <: Model] extends Identifiable with Params {
 
-  def fit(dataset: SchemaRDD, paramMap: ParamMap): Transformer
-
-  def fit(dataset: SchemaRDD, paramMaps: Array[ParamMap]): Array[Transformer] = {
-    paramMaps.map(fit(dataset, _))
+  /**
+   * Fits a single model to the input data with default parameters.
+   *
+   * @param dataset input dataset
+   * @return fitted model
+   */
+  def fit(dataset: SchemaRDD): M = {
+    fit(dataset, ParamMap.empty)
   }
 
-  def fit(dataset: SchemaRDD, paramPairs: ParamPair[_]*): Transformer = {
+  /**
+   * Fits a single model to the input data with provided parameter map.
+   *
+   * @param dataset input dataset
+   * @param paramMap parameters
+   * @return fitted model
+   */
+  def fit(dataset: SchemaRDD, paramMap: ParamMap): M
+
+  /**
+   * Fits a single model to the input data with provided parameters.
+   *
+   * @param dataset input dataset
+   * @param firstParamPair first parameter
+   * @param otherParamPairs other parameters
+   * @return fitted model
+   */
+  def fit(dataset: SchemaRDD, firstParamPair: ParamPair[_], otherParamPairs: ParamPair[_]*): M = {
     val map = new ParamMap()
-    paramPairs.foreach(map.put(_))
+    map.put(firstParamPair)
+    otherParamPairs.foreach(map.put(_))
     fit(dataset, map)
+  }
+
+  /**
+   * Fits multiple models to the input data with multiple sets of parameters.
+   * The default implementation uses a for loop on each parameter map.
+   * Subclasses could overwrite this to optimize multi-model training.
+   *
+   * @param dataset input dataset
+   * @param paramMaps an array of parameter maps
+   * @return fitted models, matching the input parameter maps
+   */
+  def fit(dataset: SchemaRDD, paramMaps: Array[ParamMap]): Array[M] = {
+    paramMaps.map(fit(dataset, _))
   }
 
   /**
