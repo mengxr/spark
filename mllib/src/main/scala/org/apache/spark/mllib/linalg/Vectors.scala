@@ -20,6 +20,10 @@ package org.apache.spark.mllib.linalg
 import java.lang.{Double => JavaDouble, Integer => JavaInteger, Iterable => JavaIterable}
 import java.util
 
+import org.apache.spark.sql.catalyst.annotation.SQLUserDefinedType
+import org.apache.spark.sql.catalyst.expressions.{Row, GenericMutableRow}
+import org.apache.spark.sql.catalyst.types._
+
 import scala.annotation.varargs
 import scala.collection.JavaConverters._
 
@@ -33,6 +37,7 @@ import org.apache.spark.SparkException
  *
  * Note: Users should not implement this interface.
  */
+@SQLUserDefinedType(udt = classOf[VectorUDT])
 sealed trait Vector extends Serializable {
 
   /**
@@ -72,6 +77,73 @@ sealed trait Vector extends Serializable {
   def copy: Vector = {
     throw new NotImplementedError(s"copy is not implemented for ${this.getClass}.")
   }
+}
+
+/**
+ * User-defined type for [[Vector]] which allows easy interaction with SQL
+ * via [[org.apache.spark.sql.SchemaRDD]].
+ */
+private[spark] class VectorUDT extends UserDefinedType[Vector] {
+
+  override def sqlType: StructType = {
+    // type: 0 = dense, 1 = sparse.
+    // dense, sparse: One element holds the vector, and the other is null.
+    StructType(Seq(
+      StructField("type", ByteType, nullable = false),
+      StructField("dense", ArrayType(DoubleType, containsNull = false), nullable = true),
+      StructField(
+        "sparse",
+        StructType(Seq(
+          StructField("size", IntegerType, nullable = false),
+          StructField("indices", ArrayType(IntegerType, containsNull = false), nullable = false),
+          StructField("values", ArrayType(DoubleType, containsNull = false), nullable = false))),
+        nullable = true)))
+  }
+
+  override def serialize(obj: Any): Row = {
+    val row = new GenericMutableRow(3)
+    obj match {
+      case dv: DenseVector =>
+        row.setByte(0, 0)
+        row.update(1, dv.values.toSeq)
+        row.setNullAt(2)
+      case sv: SparseVector =>
+        row.setByte(0, 1)
+        row.setNullAt(1)
+        val r = new GenericMutableRow(3)
+        r.setInt(0, sv.size)
+        r.update(1, sv.indices.toSeq)
+        r.update(2, sv.values.toSeq)
+        row.update(2, r)
+    }
+    row
+  }
+
+  override def deserialize(datum: Any): Vector = {
+    datum match {
+      case row: Row =>
+        require(row.length == 3,
+          s"VectorUDT.deserialize given row with length ${row.length} but requires length == 3")
+        val tpe = row.getByte(0)
+        tpe match {
+          case 0 =>
+            val values = row.getAs[Iterable[Double]](1).toArray
+            new DenseVector(values)
+          case 1 =>
+            val r = row.getAs[Row](2)
+            require(r.length == 3,
+              s"VectorUDT.deserialize given sparse with length ${r.length} but requires length = 3")
+            val size = r.getInt(0)
+            val indices = r.getAs[Iterable[Int]](1).toArray
+            val values = r.getAs[Iterable[Double]](2).toArray
+            new SparseVector(size, indices, values)
+        }
+    }
+  }
+
+  override def pyUDT: String = "pyspark.mllib.linalg.VectorUDT"
+
+  override def userClass: Class[Vector] = classOf[Vector]
 }
 
 /**
@@ -191,6 +263,7 @@ object Vectors {
 /**
  * A dense vector represented by a value array.
  */
+@SQLUserDefinedType(udt = classOf[VectorUDT])
 class DenseVector(val values: Array[Double]) extends Vector {
 
   override def size: Int = values.length
@@ -215,6 +288,7 @@ class DenseVector(val values: Array[Double]) extends Vector {
  * @param indices index array, assume to be strictly increasing.
  * @param values value array, must have the same length as the index array.
  */
+@SQLUserDefinedType(udt = classOf[VectorUDT])
 class SparseVector(
     override val size: Int,
     val indices: Array[Int],
