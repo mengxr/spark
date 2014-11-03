@@ -393,28 +393,44 @@ class StructType(DataType):
 
 class UserDefinedType(DataType):
     """
-    Spark SQL User-Defined Type (UDT)
+    :: WARN: Spark Internal Use Only ::
+    SQL User-Defined Type (UDT).
     """
 
     @classmethod
     def sqlType(self):
+        """
+        Underlying SQL storage type for this UDT.
+        """
         raise NotImplementedError("UDT must implement sqlType().")
 
     @classmethod
     def serialize(self, obj):
+        """
+        Converts the a user-type object into a SQL datum.
+        """
         raise NotImplementedError("UDT must implement serialize().")
 
     @classmethod
     def deserialize(self, datum):
-        return
+        """
+        Converts a SQL datum into a user-type object.
+        """
+        raise NotImplementedError("UDT must implement deserialize().")
 
     @classmethod
     def module(cls):
-        return None
+        """
+        The Python module of the UDT.
+        """
+        raise NotImplementedError("UDT must implement module().")
 
     @classmethod
     def scalaUDT(cls):
-        return None
+        """
+        The class name of the paired Scala UDT.
+        """
+        raise NotImplementedError("UDT must have a paired Scala UDT.")
 
     @classmethod
     def json(cls):
