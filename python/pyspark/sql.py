@@ -708,11 +708,6 @@ def _create_converter(obj, dataType):
         conv = _create_converter(value, dataType.valueType)
         return lambda row: dict((k, conv(v)) for k, v in row.iteritems())
 
-    elif isinstance(dataType, UserDefinedType):
-        def udt_conv(obj):
-            return dataType.deserialize(obj)
-        return udt_conv
-
     elif not isinstance(dataType, StructType):
         return lambda x: x
 
