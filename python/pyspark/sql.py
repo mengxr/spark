@@ -525,11 +525,11 @@ def _parse_datatype_json_string(json_string):
     ...                           complex_arraytype, False)
     >>> check_datatype(complex_maptype)
     True
-    >>> from pyspark.mllib.linalg import DenseVectorUDT
-    >>> check_datatype(DenseVectorUDT())
+    >>> from pyspark.tests import ExamplePointUDT
+    >>> check_datatype(ExamplePointUDT())
     True
     >>> structtype_with_udt = StructType([StructField("label", DoubleType(), False),
-    ...                                   StructField("features", DenseVectorUDT(), False)])
+    ...                                   StructField("point", ExamplePointUDT(), False)])
     >>> check_datatype(structtype_with_udt)
     True
     """
@@ -579,10 +579,10 @@ _type_mappings = {
 def _infer_type(obj):
     """Infer the DataType from obj
 
-    >>> from pyspark.mllib.linalg import DenseVector
-    >>> v = DenseVector([1.0, 2.0])
-    >>> _infer_type(v)
-    DenseVectorUDT
+    >>> from pyspark.tests import ExamplePoint
+    >>> p = ExamplePoint(1.0, 2.0)
+    >>> _infer_type(p)
+    ExamplePointUDT
     """
     if obj is None:
         raise ValueError("Can not infer type for None")
@@ -645,14 +645,14 @@ def _need_python_to_sql_conversion(dataType):
     ...                       StructField("values", ArrayType(DoubleType(), False), False)])
     >>> _need_python_to_sql_conversion(schema0)
     False
-    >>> from pyspark.mllib.linalg import DenseVectorUDT
-    >>> _need_python_to_sql_conversion(DenseVectorUDT())
+    >>> from pyspark.tests import ExamplePointUDT
+    >>> _need_python_to_sql_conversion(ExamplePointUDT())
     True
-    >>> schema1 = ArrayType(DenseVectorUDT(), False)
+    >>> schema1 = ArrayType(ExamplePointUDT(), False)
     >>> _need_python_to_sql_conversion(schema1)
     True
     >>> schema2 = StructType([StructField("label", DoubleType(), False),
-    ...                       StructField("features", DenseVectorUDT(), False)])
+    ...                       StructField("point", ExamplePointUDT(), False)])
     >>> _need_python_to_sql_conversion(schema2)
     True
     """
@@ -678,14 +678,14 @@ def _python_to_sql_converter(dataType):
     >>> conv = _python_to_sql_converter(ArrayType(DoubleType(), False))
     >>> conv([1.0, 2.0])
     [1.0, 2.0]
-    >>> from pyspark.mllib.linalg import DenseVector, DenseVectorUDT
-    >>> conv = _python_to_sql_converter(DenseVectorUDT())
-    >>> conv(DenseVector([1.0, 2.0]))
+    >>> from pyspark.tests import ExamplePointUDT, ExamplePoint
+    >>> conv = _python_to_sql_converter(ExamplePointUDT())
+    >>> conv(ExamplePoint(1.0, 2.0))
     [1.0, 2.0]
     >>> schema = StructType([StructField("label", DoubleType(), False),
-    ...                      StructField("features", DenseVectorUDT(), False)])
+    ...                      StructField("point", ExamplePointUDT(), False)])
     >>> conv = _python_to_sql_converter(schema)
-    >>> conv((1.0, DenseVector([1.0, 2.0])))
+    >>> conv((1.0, ExamplePoint(1.0, 2.0)))
     (1.0, [1.0, 2.0])
     """
     if not _need_python_to_sql_conversion(dataType):
@@ -721,13 +721,7 @@ def _python_to_sql_converter(dataType):
         raise ValueError("Unexpected type %r" % dataType)
 
 def _create_converter(obj, dataType):
-    """Create an converter to drop the names of fields in obj
-
-    >>> from pyspark.mllib.linalg import DenseVectorUDT
-    >>> conv = _create_converter([1.0, 2.0], DenseVectorUDT())
-    >>> conv([1.0, 2.0])
-    DenseVector([1.0,2.0])
-    """
+    """Create an converter to drop the names of fields in obj"""
     if isinstance(dataType, ArrayType):
         conv = _create_converter(obj[0], dataType.elementType)
         return lambda row: map(conv, row)
