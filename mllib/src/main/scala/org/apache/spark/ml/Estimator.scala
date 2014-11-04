@@ -21,9 +21,8 @@ import org.apache.spark.sql.SchemaRDD
 
 /**
  * Abstract class for estimators that fits models to data.
- * @tparam M model type
  */
-abstract class Estimator[M <: Model] extends Identifiable with Params {
+abstract class Estimator extends Identifiable with Params {
 
   /**
    * Fits a single model to the input data with default parameters.
@@ -31,7 +30,7 @@ abstract class Estimator[M <: Model] extends Identifiable with Params {
    * @param dataset input dataset
    * @return fitted model
    */
-  def fit(dataset: SchemaRDD): M = {
+  def fit(dataset: SchemaRDD): Model = {
     fit(dataset, ParamMap.empty)
   }
 
@@ -42,7 +41,7 @@ abstract class Estimator[M <: Model] extends Identifiable with Params {
    * @param paramMap parameters
    * @return fitted model
    */
-  def fit(dataset: SchemaRDD, paramMap: ParamMap): M
+  def fit(dataset: SchemaRDD, paramMap: ParamMap): Model
 
   /**
    * Fits a single model to the input data with provided parameters.
@@ -52,7 +51,10 @@ abstract class Estimator[M <: Model] extends Identifiable with Params {
    * @param otherParamPairs other parameters
    * @return fitted model
    */
-  def fit(dataset: SchemaRDD, firstParamPair: ParamPair[_], otherParamPairs: ParamPair[_]*): M = {
+  def fit(
+      dataset: SchemaRDD,
+      firstParamPair: ParamPair[_],
+      otherParamPairs: ParamPair[_]*): Model = {
     val map = new ParamMap()
     map.put(firstParamPair)
     otherParamPairs.foreach(map.put(_))
@@ -68,7 +70,7 @@ abstract class Estimator[M <: Model] extends Identifiable with Params {
    * @param paramMaps an array of parameter maps
    * @return fitted models, matching the input parameter maps
    */
-  def fit(dataset: SchemaRDD, paramMaps: Array[ParamMap]): Array[M] = {
+  def fit(dataset: SchemaRDD, paramMaps: Array[ParamMap]): Array[Model] = {
     paramMaps.map(fit(dataset, _))
   }
 

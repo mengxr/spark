@@ -23,7 +23,7 @@ import org.apache.spark.sql.SchemaRDD
  * Abstract class for evaluators that compute metrics from predictions.
  * @tparam T metric type
  */
-abstract class Evaluator[T >: Comparable[T]] {
+abstract class Evaluator[T <: Comparable[T]] {
 
   /**
    * Evaluate the output

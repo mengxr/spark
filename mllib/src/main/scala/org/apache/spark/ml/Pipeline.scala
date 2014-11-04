@@ -30,7 +30,7 @@ class Pipeline(override val uid: String) extends Estimator {
   val stages: Param[Array[PipelineStage]] =
     new Param[Array[PipelineStage]](this, "stages", "stages of the pipeline", None)
 
-  override def fit(dataset: SchemaRDD, paramMap: ParamMap): Transformer = {
+  override def fit(dataset: SchemaRDD, paramMap: ParamMap): PipelineModel = {
     val theStages = paramMap.getOrDefault(stages)
     // Search for last estimator.
     var lastIndexOfEstimator = -1
@@ -61,22 +61,19 @@ class Pipeline(override val uid: String) extends Estimator {
       }
     }
 
-    new Pipeline.Model(transformers.toArray)
+    new PipelineModel(transformers.toArray)
   }
 
   override def params: Array[Param[_]] = Array.empty
 }
 
-object Pipeline {
+class PipelineModel(override val uid: String, val transformers: Array[Transformer]) extends Model {
 
-  class Model(override val uid: String, val transformers: Array[Transformer]) extends Transformer {
+  def this(transformers: Array[Transformer]) = this("Pipeline.Model-" + Identifiable.randomUId(), transformers)
 
-    def this(transformers: Array[Transformer]) = this("Pipeline.Model-" + Identifiable.randomUId(), transformers)
-
-    override def transform(dataset: SchemaRDD, paramMap: ParamMap): SchemaRDD = {
-      transformers.foldLeft(dataset) { (dataset, transformer) =>
-        transformer.transform(dataset, paramMap)
-      }
+  override def transform(dataset: SchemaRDD, paramMap: ParamMap): SchemaRDD = {
+    transformers.foldLeft(dataset) { (dataset, transformer) =>
+      transformer.transform(dataset, paramMap)
     }
   }
 }

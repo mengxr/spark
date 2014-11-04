@@ -19,7 +19,7 @@ package org.apache.spark.ml.classification
 
 import org.apache.spark.ml._
 import org.apache.spark.mllib.classification.LogisticRegressionWithLBFGS
-import org.apache.spark.mllib.linalg.{VectorUDT, BLAS, Vector}
+import org.apache.spark.mllib.linalg.{BLAS, Vector}
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.sql.SchemaRDD
 import org.apache.spark.sql.catalyst.analysis.Star
@@ -56,10 +56,9 @@ class LogisticRegression(override val uid: String) extends Estimator {
 }
 
 class LogisticRegressionModel(override val uid: String, weights: Vector) extends Model {
+
   override def transform(dataset: SchemaRDD, paramMap: ParamMap): SchemaRDD = {
-    val udt = new VectorUDT()
-    val score: Any => Double = (datum) => {
-      val v = udt.deserialize(datum)
+    val score: Vector => Double = (v) => {
       val margin = BLAS.dot(v, weights)
       1.0 / (1.0 + math.exp(-margin))
     }
