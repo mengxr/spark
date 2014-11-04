@@ -72,7 +72,7 @@ object DataType {
     case JSortedObject(
         ("class", JString(udtClass)),
         ("pyClass", _),
-        ("pyModule", _),
+        ("sqlType", _),
         ("type", JString("udt"))) =>
       Class.forName(udtClass).newInstance().asInstanceOf[UserDefinedType[_]]
   }
@@ -215,7 +215,7 @@ trait PrimitiveType extends DataType {
 }
 
 object PrimitiveType {
-  private val nonDecimals = Seq(DateType, TimestampType, BinaryType) ++ NativeType.all
+  private val nonDecimals = Seq(NullType, DateType, TimestampType, BinaryType) ++ NativeType.all
   private val nonDecimalNameToType = nonDecimals.map(t => t.typeName -> t).toMap
 
   /** Given the string representation of a type, return its DataType */
@@ -610,16 +610,10 @@ abstract class UserDefinedType[UserType] extends DataType with Serializable {
   def deserialize(datum: Any): UserType
 
   override private[sql] def jsonValue: JValue = {
-    val (pyModule, pyClass) = pyUDT match {
-      case null => (null, null)
-      case udt =>
-        val split = udt.lastIndexOf(".")
-        (udt.substring(0, split), udt.substring(split + 1))
-    }
     ("type" -> "udt") ~
       ("class" -> this.getClass.getName) ~
-      ("pyClass" -> pyClass) ~
-      ("pyModule" -> pyModule)
+      ("pyClass" -> pyUDT) ~
+      ("sqlType" -> sqlType.jsonValue)
   }
 
   /**
