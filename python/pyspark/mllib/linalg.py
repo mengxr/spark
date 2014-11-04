@@ -118,15 +118,9 @@ class VectorUDT(UserDefinedType):
     def sqlType(cls):
         return StructType([
             StructField("type", ByteType(), False),
-            StructField("dense", ArrayType(DoubleType(), False), True),
-            StructField(
-                "sparse",
-                StructType([
-                    StructField("size", IntegerType, False),
-                    StructField("indices", ArrayType(IntegerType(), False), False),
-                    StructField("values", ArrayType(DoubleType(), False), False)
-                ]),
-                True)])
+            StructField("size", IntegerType(), True),
+            StructField("indices", ArrayType(IntegerType(), False), True),
+            StructField("values", ArrayType(DoubleType(), False), True)])
 
     @classmethod
     def module(cls):
@@ -137,23 +131,24 @@ class VectorUDT(UserDefinedType):
         return "org.apache.spark.mllib.linalg.VectorUDT"
 
     def serialize(self, obj):
-        if isinstance(obj, DenseVector):
-            values = [float(v) for v in obj]
-            return (0, values, None)
-        elif isinstance(obj, SparseVector):
+        if isinstance(obj, SparseVector):
             indices = [int(i) for i in obj.indices]
             values = [float(v) for v in obj.values]
-            return (1, None, (obj.size, indices, values))
+            return (0, obj.size, indices, values)
+        elif isinstance(obj, DenseVector):
+            values = [float(v) for v in obj]
+            return (1, None, None, values)
         else:
             raise ValueError("cannot serialize %r of type %r" % (obj, type(obj)))
 
     def deserialize(self, datum):
+        assert len(datum) == 4, \
+            "VectorUDT.deserialize given row with length %d but requires 4" % len(datum)
         tpe = datum[0]
         if tpe == 0:
-            return DenseVector(datum[1])
+            return SparseVector(datum[1], datum[2], datum[3])
         elif tpe == 1:
-            s = datum[2]
-            return SparseVector(s[0], s[1], s[2])
+            return DenseVector(datum[3])
         else:
             raise ValueError("do not recognize type %r" % tpe)
 

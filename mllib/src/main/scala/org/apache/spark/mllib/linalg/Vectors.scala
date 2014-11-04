@@ -86,35 +86,30 @@ sealed trait Vector extends Serializable {
 private[spark] class VectorUDT extends UserDefinedType[Vector] {
 
   override def sqlType: StructType = {
-    // type: 0 = dense, 1 = sparse.
-    // dense, sparse: One element holds the vector, and the other is null.
+    // type: 0 = sparse, 1 = dense
+    // We only use "values" for dense vectors, and "size", "indices", and "values" for sparse
+    // vectors. The "values" field is nullable because we might want to add binary vectors later,
+    // which uses "size" and "indices", but not "values".
     StructType(Seq(
       StructField("type", ByteType, nullable = false),
-      StructField("dense", ArrayType(DoubleType, containsNull = false), nullable = true),
-      StructField(
-        "sparse",
-        StructType(Seq(
-          StructField("size", IntegerType, nullable = false),
-          StructField("indices", ArrayType(IntegerType, containsNull = false), nullable = false),
-          StructField("values", ArrayType(DoubleType, containsNull = false), nullable = false))),
-        nullable = true)))
+      StructField("size", IntegerType, nullable = true),
+      StructField("indices", ArrayType(IntegerType, containsNull = false), nullable = true),
+      StructField("values", ArrayType(DoubleType, containsNull = false), nullable = true)))
   }
 
   override def serialize(obj: Any): Row = {
-    val row = new GenericMutableRow(3)
+    val row = new GenericMutableRow(4)
     obj match {
-      case dv: DenseVector =>
-        row.setByte(0, 0)
-        row.update(1, dv.values.toSeq)
-        row.setNullAt(2)
       case sv: SparseVector =>
+        row.setByte(0, 0)
+        row.setInt(1, sv.size)
+        row.update(2, sv.indices.toSeq)
+        row.update(3, sv.values.toSeq)
+      case dv: DenseVector =>
         row.setByte(0, 1)
         row.setNullAt(1)
-        val r = new GenericMutableRow(3)
-        r.setInt(0, sv.size)
-        r.update(1, sv.indices.toSeq)
-        r.update(2, sv.values.toSeq)
-        row.update(2, r)
+        row.setNullAt(2)
+        row.update(3, dv.values.toSeq)
     }
     row
   }
@@ -122,21 +117,18 @@ private[spark] class VectorUDT extends UserDefinedType[Vector] {
   override def deserialize(datum: Any): Vector = {
     datum match {
       case row: Row =>
-        require(row.length == 3,
-          s"VectorUDT.deserialize given row with length ${row.length} but requires length == 3")
+        require(row.length == 4,
+          s"VectorUDT.deserialize given row with length ${row.length} but requires length == 4")
         val tpe = row.getByte(0)
         tpe match {
           case 0 =>
-            val values = row.getAs[Iterable[Double]](1).toArray
-            new DenseVector(values)
-          case 1 =>
-            val r = row.getAs[Row](2)
-            require(r.length == 3,
-              s"VectorUDT.deserialize given sparse with length ${r.length} but requires length = 3")
-            val size = r.getInt(0)
-            val indices = r.getAs[Iterable[Int]](1).toArray
-            val values = r.getAs[Iterable[Double]](2).toArray
+            val size = row.getInt(1)
+            val indices = row.getAs[Iterable[Int]](2).toArray
+            val values = row.getAs[Iterable[Double]](3).toArray
             new SparseVector(size, indices, values)
+          case 1 =>
+            val values = row.getAs[Iterable[Double]](3).toArray
+            new DenseVector(values)
         }
     }
   }
