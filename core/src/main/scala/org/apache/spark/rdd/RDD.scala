@@ -1025,7 +1025,35 @@ abstract class RDD[T: ClassTag](
    * and may even change if the RDD is reevaluated. If a fixed ordering is required to guarantee
    * the same index assignments, you should sort the RDD with sortByKey() or save it to a file.
    */
-  def zipWithIndex(): RDD[(T, Long)] = new ZippedWithIndexRDD(this)
+  def zipWithIndex(): RDD[(T, Long)] = {
+    val p = this.partitions.size
+    if (p <= 1) { // We do need to trigger a job if there exists at most one partition.
+      this.mapPartitions { iter =>
+        iter.zipWithIndex.map { case (item, index) =>
+          (item, index.toLong)
+        }
+      }
+    } else {
+      val identityPartitioner = new Partitioner {
+        override def numPartitions: Int = p
+        override def getPartition(key: Any): Int = key.asInstanceOf[Int]
+      }
+      val startIndices = PartitionPruningRDD.create(this, _ < p - 1) // skip the last partition
+        .mapPartitionsWithIndex { (split, iter) =>
+          val size = Utils.getIteratorSize(iter)
+          Iterator.range(split + 1, p).map { i =>
+            (i, size)
+          }
+        }.reduceByKey(identityPartitioner, _ + _)
+        .values
+      this.zipPartitions(startIndices) { (iter, startIndexIter) =>
+        val startIndex = if (startIndexIter.hasNext) startIndexIter.next() else 0L
+        iter.zipWithIndex.map { case (item, localIndex) =>
+          (item, startIndex + localIndex)
+        }
+      }
+    }
+  }
 
   /**
    * Zips this RDD with generated unique Long ids. Items in the kth partition will get ids k, n+k,
