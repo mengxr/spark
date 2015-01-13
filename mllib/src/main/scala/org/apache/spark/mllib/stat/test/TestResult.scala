@@ -17,7 +17,7 @@
 
 package org.apache.spark.mllib.stat.test
 
-import org.apache.spark.annotation.Experimental
+import org.apache.spark.annotation.{DeveloperApi, Experimental}
 
 /**
  * :: Experimental ::
@@ -90,3 +90,25 @@ class ChiSqTestResult private[stat] (override val pValue: Double,
       super.toString
   }
 }
+
+/**
+ * :: DeveloperApi ::
+ * Object containing the test results for online A/B testing.
+ */
+@DeveloperApi
+private[stat] class OnlineABTestResult(
+    override val pValue: Double,
+    override val degreesOfFreedom: Double,
+    override val statistic: Double,
+    val method: String,
+    override val nullHypothesis: String)
+  extends TestResult[Double]
+  with Serializable {
+
+  override def toString: String = {
+    "A/B test summary:\n" +
+      s"method: $method\n" +
+      super.toString
+  }
+}
+

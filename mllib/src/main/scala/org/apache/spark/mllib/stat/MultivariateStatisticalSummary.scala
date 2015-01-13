@@ -45,6 +45,11 @@ trait MultivariateStatisticalSummary {
   def numNonzeros: Vector
 
   /**
+   * Number of dimensions.
+   */
+  def numDim: Int
+
+  /**
    * Maximum value of each column.
    */
   def max: Vector

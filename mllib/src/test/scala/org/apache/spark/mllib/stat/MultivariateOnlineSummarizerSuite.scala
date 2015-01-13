@@ -97,6 +97,8 @@ class MultivariateOnlineSummarizerSuite extends FunSuite {
 
     assert(summarizer.numNonzeros ~== Vectors.dense(2, 1, 1) absTol 1E-5, "numNonzeros mismatch")
 
+    assert(summarizer.numDim == 3, "numDim mismatch")
+
     assert(summarizer.variance ~== Vectors.dense(8.0, 4.5, 18.0) absTol 1E-5, "variance mismatch")
 
     assert(summarizer.count === 2)
@@ -114,6 +116,8 @@ class MultivariateOnlineSummarizerSuite extends FunSuite {
     assert(summarizer.max ~== Vectors.dense(3.0, 0.0, 6.0) absTol 1E-5, "max mismatch")
 
     assert(summarizer.numNonzeros ~== Vectors.dense(2, 1, 1) absTol 1E-5, "numNonzeros mismatch")
+
+    assert(summarizer.numDim == 3, "numDim mismatch")
 
     assert(summarizer.variance ~== Vectors.dense(8.0, 4.5, 18.0) absTol 1E-5, "variance mismatch")
 
@@ -137,6 +141,8 @@ class MultivariateOnlineSummarizerSuite extends FunSuite {
     assert(summarizer.max ~== Vectors.dense(3.8, 2.3, 1.9) absTol 1E-5, "max mismatch")
 
     assert(summarizer.numNonzeros ~== Vectors.dense(3, 5, 2) absTol 1E-5, "numNonzeros mismatch")
+
+    assert(summarizer.numDim == 3, "numDim mismatch")
 
     assert(summarizer.variance ~==
       Vectors.dense(3.857666666666, 7.0456666666666, 2.48166666666666) absTol 1E-5,
@@ -166,6 +172,8 @@ class MultivariateOnlineSummarizerSuite extends FunSuite {
     assert(summarizer.max ~== Vectors.dense(3.8, 2.3, 1.9) absTol 1E-5, "max mismatch")
 
     assert(summarizer.numNonzeros ~== Vectors.dense(3, 5, 2) absTol 1E-5, "numNonzeros mismatch")
+
+    assert(summarizer.numDim == 3, "numDim mismatch")
 
     assert(summarizer.variance ~==
       Vectors.dense(3.857666666666, 7.0456666666666, 2.48166666666666) absTol 1E-5,
@@ -203,6 +211,10 @@ class MultivariateOnlineSummarizerSuite extends FunSuite {
     assert(summarizer1.numNonzeros ~== Vectors.dense(0, 1, 1) absTol 1E-5, "numNonzeros mismatch")
 
     assert(summarizer2.numNonzeros ~== Vectors.dense(0, 1, 1) absTol 1E-5, "numNonzeros mismatch")
+
+    assert(summarizer1.numDim == 3, "numDim mismatch")
+
+    assert(summarizer2.numDim == 3, "numDim mismatch")
 
     assert(summarizer1.variance ~== Vectors.dense(0, 0, 0) absTol 1E-5, "variance mismatch")
 

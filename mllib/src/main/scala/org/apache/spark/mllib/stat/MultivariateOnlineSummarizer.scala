@@ -183,6 +183,12 @@ class MultivariateOnlineSummarizer extends MultivariateStatisticalSummary with S
     Vectors.dense(nnz)
   }
 
+  override def numDim: Int = {
+    require(totalCnt > 0, s"Nothing has been added to this summarizer.")
+
+    this.n
+  }
+
   override def max: Vector = {
     require(totalCnt > 0, s"Nothing has been added to this summarizer.")
 
