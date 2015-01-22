@@ -78,7 +78,7 @@ trait TestResult[DF] {
  * Object containing the test results for the chi-squared hypothesis test.
  */
 @Experimental
-class ChiSqTestResult private[stat] (override val pValue: Double,
+case class ChiSqTestResult private[stat] (override val pValue: Double,
     override val degreesOfFreedom: Int,
     override val statistic: Double,
     val method: String,
@@ -86,6 +86,24 @@ class ChiSqTestResult private[stat] (override val pValue: Double,
 
   override def toString: String = {
     "Chi squared test summary:\n" +
+      s"method: $method\n" +
+      super.toString
+  }
+}
+
+/**
+ * :: Experimental ::
+ * Object containing the test results for a t-test (paired or unpaired).
+ */
+@Experimental
+case class TTestResult (override val pValue: Double,
+                        override val degreesOfFreedom: Double,
+                        override val statistic: Double,
+                        val method: String,
+                        override val nullHypothesis: String) extends TestResult[Double] {
+
+  override def toString: String = {
+    "T test summary:\n" +
       s"method: $method\n" +
       super.toString
   }

@@ -172,9 +172,9 @@
     -->
     <spark.test.home>${session.executionRootDirectory}</spark.test.home>
 
-    <PermGen>64m</PermGen>
-    <MaxPermGen>512m</MaxPermGen>
-    <CodeCacheSize>512m</CodeCacheSize>
+    <PermGen>2000m</PermGen>
+    <MaxPermGen>3000m</MaxPermGen>
+    <CodeCacheSize>1000m</CodeCacheSize>
   </properties>
 
   <repositories>
@@ -1072,7 +1072,7 @@
             </args>
             <jvmArgs>
               <jvmArg>-Xms1024m</jvmArg>
-              <jvmArg>-Xmx1024m</jvmArg>
+              <jvmArg>-Xmx2024m</jvmArg>
               <jvmArg>-XX:PermSize=${PermGen}</jvmArg>
               <jvmArg>-XX:MaxPermSize=${MaxPermGen}</jvmArg>
               <jvmArg>-XX:ReservedCodeCacheSize=${CodeCacheSize}</jvmArg>
