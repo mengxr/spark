@@ -343,54 +343,67 @@ object Vectors {
    */
   def sqdist(v1: Vector, v2: Vector): Double = {
     require(v1.size == v2.size, "vector dimension mismatch")
-    var squaredDistance = 0.0
     (v1, v2) match {
-      case (v1: SparseVector, v2: SparseVector) =>
-        val v1Values = v1.values
-        val v1Indices = v1.indices
-        val v2Values = v2.values
-        val v2Indices = v2.indices
-        val nnzv1 = v1Indices.size
-        val nnzv2 = v2Indices.size
-
-        var kv1 = 0
-        var kv2 = 0
-        while (kv1 < nnzv1 || kv2 < nnzv2) {
-          var score = 0.0
-
-          if (kv2 >= nnzv2 || (kv1 < nnzv1 && v1Indices(kv1) < v2Indices(kv2))) {
-            score = v1Values(kv1)
-            kv1 += 1
-          } else if (kv1 >= nnzv1 || (kv2 < nnzv2 && v2Indices(kv2) < v1Indices(kv1))) {
-            score = v2Values(kv2)
-            kv2 += 1
-          } else {
-            score = v1Values(kv1) - v2Values(kv2)
-            kv1 += 1
-            kv2 += 1
+      case (SparseVector(_, ii1, vv1), SparseVector(_, ii2, vv2)) =>
+        var sq = 0.0
+        val nnz1 = ii1.size
+        val nnz2 = ii2.size
+        var k1 = 0
+        var i1 = 0
+        var x1 = 0.0
+        var k2 = 0
+        var x2 = 0.0
+        // i2 catching i1
+        while (k1 < nnz1 && k2 < nnz2) {
+          i1 = ii1(k1)
+          x1 = vv1(k1)
+          while (k2 < nnz2 && ii2(k2) < i1) {
+            x2 = vv2(k2)
+            sq += x2 * x2
+            k2 += 1
           }
-          squaredDistance += score * score
+          if (k2 < nnz2 && ii2(k2) == i1) {
+            val diff = x1 - vv2(k2)
+            sq += diff * diff
+            k2 += 1
+          } else {
+            sq += x1 * x1
+          }
+          k1 += 1
         }
+        // clean up
+        while (k1 < nnz1) {
+          x1 = vv1(k1)
+          sq += x1 * x1
+          k1 += 1
+        }
+        while (k2 < nnz2) {
+          x2 = vv2(k2)
+          sq += x2 * x2
+          k2 += 1
+        }
+        sq
 
       case (v1: SparseVector, v2: DenseVector) =>
-        squaredDistance = sqdist(v1, v2)
+        sqdist(v1, v2)
 
       case (v1: DenseVector, v2: SparseVector) =>
-        squaredDistance = sqdist(v2, v1)
+        sqdist(v2, v1)
 
       case (DenseVector(vv1), DenseVector(vv2)) =>
-        var kv = 0
         val sz = vv1.size
-        while (kv < sz) {
-          val score = vv1(kv) - vv2(kv)
-          squaredDistance += score * score
-          kv += 1
+        var sq = 0.0
+        var i = 0
+        while (i < sz) {
+          val diff = vv1(i) - vv2(i)
+          sq += diff * diff
+          i += 1
         }
+        sq
       case _ =>
         throw new IllegalArgumentException("Do not support vector type " + v1.getClass +
           " and " + v2.getClass)
     }
-    squaredDistance
   }
 
   /**
