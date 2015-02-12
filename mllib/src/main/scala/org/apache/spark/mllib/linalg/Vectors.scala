@@ -348,34 +348,36 @@ object Vectors {
   }
 
   /**
-   * Returns the squared distance between two Vectors.
-   * @param v1 first Vector.
-   * @param v2 second Vector.
-   * @return squared distance between two Vectors.
+   * Computes the squared distance between two vectors.
+   * @param v1 first vector
+   * @param v2 second vector
+   * @return the squared distance between two vectors
    */
   def sqdist(v1: Vector, v2: Vector): Double = {
-    require(v1.size == v2.size, "vector dimension mismatch")
+    val n = v1.size
+    require(v2.size == n, s"Vector dimension mismatch: v1.size = $n, v2.size = ${v2.size}.")
     (v1, v2) match {
       case (SparseVector(_, ii1, vv1), SparseVector(_, ii2, vv2)) =>
         var sq = 0.0
-        val nnz1 = ii1.size
-        val nnz2 = ii2.size
+        val nnz1 = ii1.length
+        val nnz2 = ii2.length
         var k1 = 0
         var i1 = 0
         var x1 = 0.0
         var k2 = 0
         var x2 = 0.0
+        var diff = 0.0
         // i2 catching i1
         while (k1 < nnz1 && k2 < nnz2) {
           i1 = ii1(k1)
-          x1 = vv1(k1)
           while (k2 < nnz2 && ii2(k2) < i1) {
             x2 = vv2(k2)
             sq += x2 * x2
             k2 += 1
           }
+          x1 = vv1(k1)
           if (k2 < nnz2 && ii2(k2) == i1) {
-            val diff = x1 - vv2(k2)
+            diff = x1 - vv2(k2)
             sq += diff * diff
             k2 += 1
           } else {
@@ -403,48 +405,53 @@ object Vectors {
         sqdist(v2, v1)
 
       case (DenseVector(vv1), DenseVector(vv2)) =>
-        val sz = vv1.size
         var sq = 0.0
         var i = 0
-        while (i < sz) {
+        while (i < n) {
           val diff = vv1(i) - vv2(i)
           sq += diff * diff
           i += 1
         }
         sq
       case _ =>
-        throw new IllegalArgumentException("Do not support vector type " + v1.getClass +
-          " and " + v2.getClass)
+        throw new IllegalArgumentException(
+          s"Do not support vector type ${v1.getClass} and ${v2.getClass}.")
     }
   }
 
   /**
-   * Returns the squared distance between DenseVector and SparseVector.
+   * Returns the squared distance between a sparse vector and a dense vector.
    */
   private[mllib] def sqdist(v1: SparseVector, v2: DenseVector): Double = {
-    var kv1 = 0
-    var kv2 = 0
-    val indices = v1.indices
-    var squaredDistance = 0.0
-    val nnzv1 = indices.size
-    val nnzv2 = v2.size
-    var iv1 = if (nnzv1 > 0) indices(kv1) else -1
-
-    while (kv2 < nnzv2) {
-      var score = 0.0
-      if (kv2 != iv1) {
-        score = v2(kv2)
-      } else {
-        score = v1.values(kv1) - v2(kv2)
-        if (kv1 < nnzv1 - 1) {
-          kv1 += 1
-          iv1 = indices(kv1)
-        }
+    val SparseVector(n, ii1, vv1) = v1
+    val nnz1 = ii1.length
+    val vv2 = v2.values
+    var k1 = 0
+    var i1 = 0
+    var i2 = 0
+    var x2 = 0.0
+    var diff = 0.0
+    var sq = 0.0
+    // i2 catching i1
+    while (k1 < nnz1 && i2 < n) {
+      i1 = ii1(k1)
+      while (i2 < i1) {
+        x2 = vv2(i2)
+        sq += x2 * x2
+        i2 += 1
       }
-      squaredDistance += score * score
-      kv2 += 1
+      diff = vv1(k1) - vv2(i2)
+      sq += diff * diff
+      k1 += 1
+      i2 += 1
     }
-    squaredDistance
+    // clean up
+    while (i2 < n) {
+      x2 = vv2(i2)
+      sq += x2 * x2
+      i2 += 1
+    }
+    sq
   }
 
   /**
