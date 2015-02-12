@@ -361,40 +361,54 @@ object Vectors {
         var sq = 0.0
         val nnz1 = ii1.length
         val nnz2 = ii2.length
-        var k1 = 0
-        var i1 = 0
+        // Assume that both vectors start with index -1 and value 0.0 and end with (n, 0.0).
+        var k1 = -1
+        var i1 = -1
         var x1 = 0.0
-        var k2 = 0
+        var k2 = -1
+        var i2 = -1
         var x2 = 0.0
         var diff = 0.0
-        // i2 catching i1
-        while (k1 < nnz1 && k2 < nnz2) {
-          i1 = ii1(k1)
-          while (k2 < nnz2 && ii2(k2) < i1) {
-            x2 = vv2(k2)
-            sq += x2 * x2
-            k2 += 1
+        @inline def inc1(): Unit = {
+          k1 += 1
+          if (k1 < nnz1) {
+            i1 = ii1(k1)
+            x1 = vv1(k1)
+          } else {
+            i1 = n
+            x1 = 0.0
           }
-          x1 = vv1(k1)
-          if (k2 < nnz2 && ii2(k2) == i1) {
-            diff = x1 - vv2(k2)
+        }
+        @inline def inc2(): Unit = {
+          k2 += 1
+          if (k2 < nnz2) {
+            i2 = ii2(k2)
+            x2 = vv2(k2)
+          } else {
+            i2 = n
+            x2 = 0.0
+          }
+        }
+        // i2 catching i1
+        while (i2 < n) {
+          while (i2 < i1) {
+            sq += x2 * x2
+            inc2()
+          }
+          if (i2 == i1) {
+            diff = x1 - x2
             sq += diff * diff
-            k2 += 1
+            inc2()
           } else {
             sq += x1 * x1
           }
-          k1 += 1
+          inc1()
         }
         // clean up
         while (k1 < nnz1) {
           x1 = vv1(k1)
           sq += x1 * x1
           k1 += 1
-        }
-        while (k2 < nnz2) {
-          x2 = vv2(k2)
-          sq += x2 * x2
-          k2 += 1
         }
         sq
 
