@@ -358,17 +358,15 @@ object Vectors {
     require(v2.size == n, s"Vector dimension mismatch: v1.size = $n, v2.size = ${v2.size}.")
     (v1, v2) match {
       case (SparseVector(_, ii1, vv1), SparseVector(_, ii2, vv2)) =>
-        var sq = 0.0
         val nnz1 = ii1.length
         val nnz2 = ii2.length
-        // Assume that both vectors start with index -1 and value 0.0 and end with (n, 0.0).
+        // Assume that both vectors start with index -1 and value 0.0, and end with (n, 0.0).
         var k1 = -1
         var i1 = -1
         var x1 = 0.0
         var k2 = -1
         var i2 = -1
         var x2 = 0.0
-        var diff = 0.0
         @inline def inc1(): Unit = {
           k1 += 1
           if (k1 < nnz1) {
@@ -389,6 +387,8 @@ object Vectors {
             x2 = 0.0
           }
         }
+        var diff = 0.0
+        var sq = 0.0
         // i2 catching i1
         while (i2 < n) {
           while (i2 < i1) {
@@ -440,30 +440,42 @@ object Vectors {
     val SparseVector(n, ii1, vv1) = v1
     val nnz1 = ii1.length
     val vv2 = v2.values
-    var k1 = 0
-    var i1 = 0
-    var i2 = 0
+    // Assume that both vectors start with index -1 and value 0.0, and end with (n, 0.0).
+    var k1 = -1
+    var i1 = -1
+    var x1 = 0.0
+    var i2 = -1
     var x2 = 0.0
+    @inline def inc1(): Unit = {
+      k1 += 1
+      if (k1 < nnz1) {
+        i1 = ii1(k1)
+        x1 = vv1(k1)
+      } else {
+        i1 = n
+        x1 = 0.0
+      }
+    }
+    @inline def inc2(): Unit = {
+      i2 += 1
+      if (i2 < n) {
+        x2 = vv2(i2)
+      } else {
+        x2 = 0.0
+      }
+    }
     var diff = 0.0
     var sq = 0.0
     // i2 catching i1
-    while (k1 < nnz1 && i2 < n) {
-      i1 = ii1(k1)
-      while (i2 < i1) {
-        x2 = vv2(i2)
-        sq += x2 * x2
-        i2 += 1
-      }
-      diff = vv1(k1) - vv2(i2)
-      sq += diff * diff
-      k1 += 1
-      i2 += 1
-    }
-    // clean up
     while (i2 < n) {
-      x2 = vv2(i2)
-      sq += x2 * x2
-      i2 += 1
+      while (i2 < i1) {
+        sq += x2 * x2
+        inc2()
+      }
+      diff = x1 - x2
+      sq += diff * diff
+      inc1()
+      inc2()
     }
     sq
   }
