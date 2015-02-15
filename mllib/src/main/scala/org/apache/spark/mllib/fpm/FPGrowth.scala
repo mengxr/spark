@@ -152,9 +152,14 @@ class FPGrowth private (
       minCount: Long,
       freqItems: Array[Item],
       partitioner: Partitioner): RDD[(Array[Item], Long)] = {
-    val itemToRank = freqItems.zipWithIndex.toMap
-    data.flatMap { transaction =>
-      genCondTransactions(transaction, itemToRank, partitioner)
+    data.mapPartitions { transactions =>
+      val itemToRank = new mutable.OpenHashMap[Item, Int](freqItems.length)
+      var i = 0
+      freqItems.foreach { t =>
+        itemToRank.update(t, i)
+        i += 1
+      }
+      transactions.flatMap(genCondTransactions(_, itemToRank, partitioner))
     }.aggregateByKey(new FPTree[Int], partitioner.numPartitions)(
       (tree, transaction) => tree.add(transaction, 1L),
       (tree1, tree2) => tree1.merge(tree2))
@@ -174,7 +179,7 @@ class FPGrowth private (
    */
   private def genCondTransactions[Item: ClassTag](
       transaction: Array[Item],
-      itemToRank: Map[Item, Int],
+      itemToRank: mutable.OpenHashMap[Item, Int],
       partitioner: Partitioner): mutable.Map[Int, Array[Int]] = {
     val output = mutable.Map.empty[Int, Array[Int]]
     // Filter the basket by frequent items pattern and sort their ranks.
