@@ -160,7 +160,7 @@ class FPGrowth private (
         i += 1
       }
       transactions.flatMap(genCondTransactions(_, itemToRank, partitioner))
-    }.aggregateByKey(new FPTree[Int], partitioner.numPartitions)(
+    }.aggregateByKey(new FPTree, partitioner.numPartitions)(
       (tree, transaction) => tree.add(transaction, 1L),
       (tree1, tree2) => tree1.merge(tree2))
     .flatMap { case (part, tree) =>
