@@ -30,6 +30,7 @@ import org.apache.spark.api.java.{JavaPairRDD, JavaRDD}
 import org.apache.spark.api.java.JavaSparkContext.fakeClassTag
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
+import org.apache.spark.util.collection.OpenHashMap
 
 /**
  * :: Experimental ::
@@ -153,7 +154,7 @@ class FPGrowth private (
       freqItems: Array[Item],
       partitioner: Partitioner): RDD[(Array[Item], Long)] = {
     data.mapPartitions { transactions =>
-      val itemToRank = new mutable.OpenHashMap[Item, Int](freqItems.length)
+      val itemToRank = new OpenHashMap[Item, Int](math.max(freqItems.length, 1))
       var i = 0
       freqItems.foreach { t =>
         itemToRank.update(t, i)
@@ -179,19 +180,25 @@ class FPGrowth private (
    */
   private def genCondTransactions[Item: ClassTag](
       transaction: Array[Item],
-      itemToRank: mutable.OpenHashMap[Item, Int],
-      partitioner: Partitioner): mutable.Map[Int, Array[Int]] = {
-    val output = mutable.Map.empty[Int, Array[Int]]
+      itemToRank: OpenHashMap[Item, Int],
+      partitioner: Partitioner): Iterable[(Int, Array[Int])] = {
     // Filter the basket by frequent items pattern and sort their ranks.
-    val filtered = transaction.flatMap(itemToRank.get)
+    val builder = mutable.ArrayBuilder.make[Int]
+    transaction.foreach { t =>
+      if (itemToRank.contains(t)) {
+        builder += itemToRank(t)
+      }
+    }
+    val filtered = builder.result()
     ju.Arrays.sort(filtered)
+    val output = new OpenHashMap[Int, Array[Int]]()
     val n = filtered.length
     var i = n - 1
     while (i >= 0) {
       val item = filtered(i)
       val part = partitioner.getPartition(item)
       if (!output.contains(part)) {
-        output(part) = filtered.slice(0, i + 1)
+        output.update(part, filtered.slice(0, i + 1))
       }
       i -= 1
     }

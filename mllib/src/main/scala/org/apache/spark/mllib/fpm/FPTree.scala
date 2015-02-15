@@ -17,8 +17,9 @@
 
 package org.apache.spark.mllib.fpm
 
-import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
+
+import org.apache.spark.util.collection.PrimitiveKeyOpenHashMap
 
 /**
  * FP-Tree data structure used in FP-Growth.
@@ -29,7 +30,7 @@ private[fpm] class FPTree extends Serializable {
 
   val root: Node = new Node(null)
 
-  private val summaries: mutable.Map[Int, Summary] = mutable.Map.empty
+  private val summaries: PrimitiveKeyOpenHashMap[Int, Summary] = new PrimitiveKeyOpenHashMap()
 
   /** Adds a transaction with count. */
   def add(t: Iterable[Int], count: Long = 1L): this.type = {
@@ -37,15 +38,27 @@ private[fpm] class FPTree extends Serializable {
     var curr = root
     curr.count += count
     t.foreach { item =>
-      val summary = summaries.getOrElseUpdate(item, new Summary)
+      val summary = if (summaries.contains(item)) {
+        summaries(item)
+      } else {
+        val s = new Summary
+        summaries.update(item, s)
+        s
+      }
       summary.count += count
-      val child = curr.children.getOrElseUpdate(item, {
-        val newNode = new Node(curr)
-        newNode.item = item
-        summary.nodes += newNode
-        newNode
-      })
+      summaries.update(item, summary)
+      val children = curr.children
+      val child = if (children.contains(item)) {
+        children(item)
+      } else {
+        val c = new Node(curr)
+        c.item = item
+        summary.nodes += c
+        children.update(item, c)
+        c
+      }
       child.count += count
+      curr.children.update(item, child)
       curr = child
     }
     this
@@ -120,7 +133,7 @@ private[fpm] object FPTree {
   class Node(val parent: Node) extends Serializable {
     var item: Int = -1
     var count: Long = 0L
-    val children: mutable.Map[Int, Node] = mutable.Map.empty
+    val children: PrimitiveKeyOpenHashMap[Int, Node] = new PrimitiveKeyOpenHashMap()
 
     def isRoot: Boolean = parent == null
   }

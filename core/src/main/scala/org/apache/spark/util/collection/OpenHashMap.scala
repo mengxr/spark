@@ -141,6 +141,15 @@ class OpenHashMap[K : ClassTag, @specialized(Long, Int, Double) V: ClassTag](
     }
   }
 
+  /** Returns whether this map contains a key. */
+  def contains(k: K): Boolean = {
+    if (k == null) {
+      haveNullValue
+    } else {
+      _keySet.getPos(k) >= 0
+    }
+  }
+
   // The following member variables are declared as protected instead of private for the
   // specialization to work (specialized class extends the non-specialized one and needs access
   // to the "private" variables).

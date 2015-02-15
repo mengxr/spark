@@ -112,6 +112,11 @@ class PrimitiveKeyOpenHashMap[@specialized(Long, Int) K: ClassTag,
     }
   }
 
+  /** Returns whether this map contains a key. */
+  def contains(k: K): Boolean = {
+    _keySet.getPos(k) >= 0
+  }
+
   // The following member variables are declared as protected instead of private for the
   // specialization to work (specialized class extends the unspecialized one and needs access
   // to the "private" variables).
