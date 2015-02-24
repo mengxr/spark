@@ -17,16 +17,20 @@
 
 package org.apache.spark.ml.feature
 
-import org.apache.spark.ml.{Estimator, Model}
+import org.apache.spark.annotation.AlphaComponent
 import org.apache.spark.ml.param._
+import org.apache.spark.ml.{Estimator, Model}
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
 import org.apache.spark.util.collection.OpenHashMap
 
+/**
+ * Base trait for [[LabelIndexer]] and [[LabelIndexerModel]].
+ */
 private[feature] trait LabelIndexerBase extends Params with HasLabelCol with HasOutputCol {
 
-  /** Validates and transforms input schema. */
+  /** Validates and transforms the input schema. */
   protected def validateAndTransformSchema(schema: StructType, paramMap: ParamMap): StructType = {
     val map = this.paramMap ++ paramMap
     val labelType = schema(map(labelCol)).dataType
@@ -41,6 +45,13 @@ private[feature] trait LabelIndexerBase extends Params with HasLabelCol with Has
   }
 }
 
+/**
+ * :: AlphaComponent ::
+ * A label indexer that maps a string column of labels to an integer column of label indices.
+ * The indices are in [0, numLabels), ordered by label frequencies.
+ * The most frequent label gets index 0.
+ */
+@AlphaComponent
 class LabelIndexer extends Estimator[LabelIndexerModel] with LabelIndexerBase {
 
   /** @group setParam */
@@ -65,6 +76,11 @@ class LabelIndexer extends Estimator[LabelIndexerModel] with LabelIndexerBase {
   }
 }
 
+/**
+ * :: AlphaComponent ::
+ * Model fitted by [[LabelIndexer]].
+ */
+@AlphaComponent
 class LabelIndexerModel private[ml] (
     override val parent: LabelIndexer,
     override val fittingParamMap: ParamMap,

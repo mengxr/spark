@@ -20,7 +20,7 @@ package org.apache.spark.ml.feature
 import org.scalatest.FunSuite
 
 import org.apache.spark.mllib.util.MLlibTestSparkContext
-import org.apache.spark.sql.{Row, SQLContext}
+import org.apache.spark.sql.SQLContext
 
 class LabelIndexerSuite extends FunSuite with MLlibTestSparkContext {
   private var sqlContext: SQLContext = _
@@ -32,7 +32,7 @@ class LabelIndexerSuite extends FunSuite with MLlibTestSparkContext {
 
   test("LabelIndexer") {
     val data = sc.parallelize(Seq((0, "a"), (1, "b"), (2, "c"), (3, "a"), (4, "a"), (5, "c")), 2)
-        val df = sqlContext.createDataFrame(data).toDF("id", "label")
+    val df = sqlContext.createDataFrame(data).toDF("id", "label")
     val indexer = new LabelIndexer()
       .setOutputCol("labelIndex")
       .fit(df)
