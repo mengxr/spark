@@ -15,24 +15,20 @@
  * limitations under the License.
  */
 
-package org.apache.spark.ml.attribute
+package org.apache.spark.ml.attribute;
 
-sealed trait FeatureType
+import org.junit.Test;
+import org.junit.Assert;
 
-sealed trait ContinuousFeatureType extends FeatureType
-sealed trait CategoricalFeatureType extends FeatureType
-sealed trait DiscreteFeatureType extends ContinuousFeatureType
+public class JavaAttributeTypeSuite {
 
-case object Continuous extends ContinuousFeatureType
-case object Categorical extends CategoricalFeatureType
-case object Discrete extends DiscreteFeatureType
-case object Binary extends DiscreteFeatureType with CategoricalFeatureType
-
-object FeatureTypes {
-  def withName(name: String): FeatureType = name match {
-    case "CONTINUOUS" => Continuous
-    case "CATEGORICAL" => Categorical
-    case "DISCRETE" => Discrete
-    case "BINARY" => Binary
+  @Test
+  public void testAttributeType() {
+    AttributeType numericType = AttributeType.Numeric();
+    AttributeType nominalType = AttributeType.Nominal();
+    AttributeType binaryType = AttributeType.Binary();
+    Assert.assertEquals(numericType, NumericAttribute.defaultAttr().attrType());
+    Assert.assertEquals(nominalType, NominalAttribute.defaultAttr().attrType());
+    Assert.assertEquals(binaryType, BinaryAttribute.defaultAttr().attrType());
   }
 }
