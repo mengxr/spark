@@ -20,28 +20,23 @@ package org.apache.spark.ml.attribute
 import org.json4s._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
-import org.json4s.jackson.Serialization.write
 
 import org.apache.spark.sql.types.Metadata
 
-sealed trait Attribute extends Serializable {
+sealed abstract class Attribute extends Serializable {
 
   /** Attribute type: {0: numeric, 1: nominal, 2: binary}. */
   def attrType: AttributeType
 
   /** Name of the attribute. None if it is not set. */
-  def name: Option[String] = None
-
-  def withName(name: String): Attribute = copyWithName(Some(name))
-  def withoutName: Attribute = copyWithName(None)
-  private[ml] def copyWithName(name: Option[String]): Attribute
+  def name: Option[String]
+  def withName(name: String): Attribute
+  def withoutName: Attribute
 
   /** Index of the attribute. None if it is not set. */
-  def index: Option[Int] = None
-
-  def withIndex(index: Int): Attribute = copyWithIndex(Some(index))
-  def withoutIndex: Attribute = copyWithIndex(None)
-  private[ml] def copyWithIndex(index: Option[Int]): Attribute
+  def index: Option[Int]
+  def withIndex(index: Int): Attribute
+  def withoutIndex: Attribute
 
   def isNumeric: Boolean
 
@@ -94,6 +89,7 @@ private[attribute] object AttributeKey {
   final val Std: String = "std"
   final val Sparsity: String = "sparsity"
   final val IsOrdinal: String = "isOrdinal"
+  final val Cardinality: String = "cardinality"
 }
 
 case class NumericAttribute private[ml] (
@@ -117,23 +113,23 @@ case class NumericAttribute private[ml] (
       (Sparsity -> sparsity)
   }
 
-  override def copyWithName(name: Option[String]) = {
-    copyWith(name = name)
-  }
+  override def withName(name: String): NumericAttribute = copy(name = Some(name))
+  override def withoutName: NumericAttribute = copy(name = None)
 
-  override def copyWithIndex(index: Option[Int]) = {
-    copyWith(index = index)
-  }
+  override def withIndex(index: Int): NumericAttribute = copy(index = Some(index))
+  override def withoutIndex: NumericAttribute = copy(index = None)
 
-  private[ml] def copyWith(
-    name: Option[String] = name,
-    index: Option[Int] = index,
-    min: Option[Double] = min,
-    max: Option[Double] = max,
-    std: Option[Double] = std,
-    support: Option[Double] = sparsity) = {
-    new NumericAttribute(name, index, min, max, std, support)
-  }
+  def withMin(min: Double): NumericAttribute = copy(min = Some(min))
+  def withoutMin: NumericAttribute = copy(min = None)
+
+  def withMax(max: Double): NumericAttribute = copy(max = Some(max))
+  def withoutMax: NumericAttribute = copy(max = None)
+
+  def withStd(std: Double): NumericAttribute = copy(std = Some(std))
+  def withoutStd: NumericAttribute = copy(std = None)
+
+  def withSparsity(sparsity: Double): NumericAttribute = copy(sparsity = Some(sparsity))
+  def withoutSparsity: NumericAttribute = copy(sparsity = None)
 
   override def isNumeric: Boolean = true
 
@@ -146,7 +142,14 @@ object NumericAttribute extends AttributeFactory {
 
   override def fromJsonValue(json: JValue): NumericAttribute = {
     implicit val formats = DefaultFormats
-    json.extract[NumericAttribute]
+    import AttributeKey._
+    val name = (json \ Name).extractOpt[String]
+    val index = (json \ Index).extractOpt[Int]
+    val min = (json \ Min).extractOpt[Double]
+    val max = (json \ Max).extractOpt[Double]
+    val std = (json \ Std).extractOpt[Double]
+    val sparsity = (json \ Sparsity).extractOpt[Double]
+    new NumericAttribute(name, index, min, max, std, sparsity)
   }
 }
 
@@ -155,7 +158,7 @@ case class NominalAttribute private[ml] (
     override val index: Option[Int] = None,
     isOrdinal: Option[Boolean] = None,
     cardinality: Option[Int] = None,
-    values: Option[Array[String]] = None) extends Attribute {
+    values: Option[Seq[String]] = None) extends Attribute {
 
   override def attrType: AttributeType = AttributeType.Nominal
 
@@ -173,22 +176,40 @@ case class NominalAttribute private[ml] (
   }
 
   override private[ml] def jsonValue: JValue = {
-    implicit val formats = DefaultFormats
-    write(this)
+    import AttributeKey._
+    val json = (Type -> attrType.name) ~
+      (Name -> name) ~
+      (Index -> index) ~
+      (IsOrdinal -> isOrdinal) ~
+      (Cardinality -> cardinality)
+    if (values.isDefined) {
+      json ~ (Values -> values.get)
+    } else {
+      json
+    }
   }
 
-  override private[ml] def copyWithName(name: Option[String]): Attribute = copyWith(name = name)
-
-  override private[ml] def copyWithIndex(index: Option[Int]): Attribute = copyWith(index = index)
-
-  private[ml] def copyWith(
-      name: Option[String] = None,
-      index: Option[Int] = None,
-      cardinality: Option[Int] = None,
-      values: Option[Array[String]] = None,
-      isOrdinal: Option[Boolean] = None): NominalAttribute = {
-    new NominalAttribute(name, index, isOrdinal, cardinality, values)
+  def withValues(values: Seq[String]): NominalAttribute = {
+    copy(cardinality = None, values = Some(values))
   }
+
+  def withoutValues: NominalAttribute = {
+    copy(values = None)
+  }
+
+  def withCardinality(cardinality: Int): NominalAttribute = {
+    if (values.isDefined) {
+      throw new IllegalArgumentException("Cannot copy with cardinality if values are defined.")
+    } else {
+      copy(cardinality = Some(cardinality))
+    }
+  }
+
+  override def withName(name: String): NominalAttribute = copy(name = Some(name))
+  override def withoutName: NominalAttribute = copy(name = None)
+
+  override def withIndex(index: Int): NominalAttribute = copy(index = Some(index))
+  override def withoutIndex: NominalAttribute = copy(index = None)
 }
 
 object NominalAttribute extends AttributeFactory {
@@ -197,14 +218,20 @@ object NominalAttribute extends AttributeFactory {
 
   override def fromJsonValue(json: JValue): NominalAttribute = {
     implicit val formats = DefaultFormats
-    json.extract[NominalAttribute]
+    import AttributeKey._
+    val name = (json \ Name).extractOpt[String]
+    val index = (json \ Index).extractOpt[Int]
+    val isOrdinal = (json \ IsOrdinal).extractOpt[Boolean]
+    val cardinality = (json \ Cardinality).extractOpt[Int]
+    val values = (json \ Values).toOption.map(_.extract[Seq[String]])
+    new NominalAttribute(name, index, isOrdinal, cardinality, values)
   }
 }
 
 case class BinaryAttribute private[ml] (
     override val name: Option[String] = None,
     override val index: Option[Int] = None,
-    values: Option[Array[String]] = None)
+    values: Option[Seq[String]] = None)
   extends Attribute {
 
   override def attrType: AttributeType = AttributeType.Binary
@@ -213,21 +240,23 @@ case class BinaryAttribute private[ml] (
 
   override def isNominal: Boolean = true
 
-  private[ml] override def copyWithName(name: Option[String]): Attribute = copyWith(name = name)
-
-  private[ml] override def copyWithIndex(index: Option[Int]): Attribute = copyWith(index = index)
-
-  private def copyWith(
-    name: Option[String] = name,
-    index: Option[Int] = index,
-    values: Option[Array[String]] = values): Attribute = {
-    new BinaryAttribute(name, index, values)
-  }
-
   override private[ml] def jsonValue: JValue = {
-    implicit val formats = DefaultFormats
-    write(this)
+    import AttributeKey._
+    val json = (Type -> attrType.name) ~
+      (Name -> name) ~
+      (Index -> index)
+    if (values.isDefined) {
+      json ~ (Values -> values.get)
+    } else {
+      json
+    }
   }
+
+  override def withName(name: String): Attribute = copy(name = Some(name))
+  override def withoutName: Attribute = copy(name = None)
+
+  override def withIndex(index: Int): Attribute = copy(index= Some(index))
+  override def withoutIndex: Attribute = copy(index = None)
 }
 
 object BinaryAttribute extends AttributeFactory {
@@ -236,6 +265,10 @@ object BinaryAttribute extends AttributeFactory {
 
   override private[ml] def fromJsonValue(json: JValue): Attribute = {
     implicit val formats = DefaultFormats
-    json.extract[BinaryAttribute]
+    import AttributeKey._
+    val name = (json \ Name).extractOpt[String]
+    val index = (json \ Index).extractOpt[Int]
+    val values = (json \ Values).toOption.map(_.extract[Seq[String]])
+    BinaryAttribute(name, index, values)
   }
 }

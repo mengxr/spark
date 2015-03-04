@@ -21,30 +21,67 @@ import org.scalatest.FunSuite
 
 class AttributeSuite extends FunSuite {
   test("default numeric attribute") {
-    val default = NumericAttribute.defaultAttr
-    assert(default.attrType === AttributeType.Numeric)
-    assert(default.name.isEmpty)
-    assert(default.index.isEmpty)
-    assert(default.min.isEmpty)
-    assert(default.max.isEmpty)
-    assert(default.std.isEmpty)
-    assert(default.sparsity.isEmpty)
-    assert(default.isNumeric === true)
-    assert(default.isNominal === false)
-    assert(default.toJson === "{}")
-    assert(default === Attribute.fromJson("{}"))
+    val attr: NumericAttribute = NumericAttribute.defaultAttr
+    val json = "{}"
+    assert(attr.attrType === AttributeType.Numeric)
+    assert(attr.isNumeric)
+    assert(!attr.isNominal)
+    assert(attr.name.isEmpty)
+    assert(attr.index.isEmpty)
+    assert(attr.min.isEmpty)
+    assert(attr.max.isEmpty)
+    assert(attr.std.isEmpty)
+    assert(attr.sparsity.isEmpty)
+    assert(attr.toJson === json)
+    assert(attr === Attribute.fromJson(json))
   }
 
-  test("non-default numeric attribute") {
+  test("customized numeric attribute") {
     val name = "age"
     val index = 0
     val json = """{"name":"age","index":0}"""
-    val attr = NumericAttribute.defaultAttr
+    val attr: NumericAttribute = NumericAttribute.defaultAttr
       .withName(name)
       .withIndex(index)
     assert(attr.attrType == AttributeType.Numeric)
-    assert(attr.name.get === name)
-    assert(attr.index.get === index)
+    assert(attr.isNumeric)
+    assert(!attr.isNominal)
+    assert(attr.name === Some(name))
+    assert(attr.index === Some(index))
+    assert(attr.toJson === json)
+    assert(attr === Attribute.fromJson(json))
+  }
+
+  test("default nominal attribute") {
+    val attr: NominalAttribute = NominalAttribute.defaultAttr
+    val json = """{"type":"nominal"}"""
+    assert(attr.attrType === AttributeType.Nominal)
+    assert(!attr.isNumeric)
+    assert(attr.isNominal)
+    assert(attr.name.isEmpty)
+    assert(attr.index.isEmpty)
+    assert(attr.values.isEmpty)
+    assert(attr.cardinality.isEmpty)
+    assert(attr.isOrdinal.isEmpty)
+    assert(attr.toJson === json)
+    assert(attr === Attribute.fromJson(json))
+  }
+
+  test("customized nominal attribute") {
+    val name = "size"
+    val index = 1
+    val values = Seq("small", "medium", "large")
+    val json = """{"type":"nominal","name":"size","index":1,"values":["small","medium","large"]}"""
+    val attr: NominalAttribute = NominalAttribute.defaultAttr
+      .withName(name)
+      .withIndex(index)
+      .withValues(values)
+    assert(attr.attrType === AttributeType.Nominal)
+    assert(!attr.isNumeric)
+    assert(attr.isNominal)
+    assert(attr.name === Some(name))
+    assert(attr.index === Some(index))
+    assert(attr.values === Some(values))
     assert(attr.toJson === json)
     assert(attr === Attribute.fromJson(json))
   }
