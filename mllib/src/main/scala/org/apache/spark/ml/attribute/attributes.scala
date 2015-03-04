@@ -21,7 +21,7 @@ import org.json4s._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
 
-import org.apache.spark.sql.types.Metadata
+import org.apache.spark.sql.types.{MetadataBuilder, Metadata}
 
 sealed abstract class Attribute extends Serializable {
 
@@ -42,13 +42,15 @@ sealed abstract class Attribute extends Serializable {
 
   def isNominal: Boolean
 
-  /** Get the JSON representation of this attribute. */
   def toJson: String = compact(render(jsonValue))
 
   private[ml] def jsonValue: JValue
 
   /** Convert this attribute to metadata. */
-  def toMetadata: Metadata = null
+  def toMetadata(withType: Boolean): Metadata
+
+  /** Converts this attribute to Metadata without type info. */
+  def toMetadata: Metadata = toMetadata(withType = true)
 }
 
 private[attribute] trait AttributeFactory {
@@ -57,7 +59,7 @@ private[attribute] trait AttributeFactory {
 
   def fromJson(json: String): Attribute = fromJsonValue(parse(json))
 
-  def fromMetadata(metadata: Metadata): Attribute = null
+  def fromMetadata(metadata: Metadata): Attribute
 }
 
 object Attribute extends AttributeFactory {
@@ -65,17 +67,29 @@ object Attribute extends AttributeFactory {
   private[ml] override def fromJsonValue(json: JValue): Attribute = {
     implicit val formats = DefaultFormats
     val attrType = (json \ AttributeKey.Type).extractOrElse(AttributeType.Numeric.name)
-    val factory: AttributeFactory =
-      if (attrType == AttributeType.Numeric.name) {
-        NumericAttribute
-      } else if (attrType == AttributeType.Nominal.name) {
-        NominalAttribute
-      } else if (attrType == AttributeType.Binary.name) {
-        BinaryAttribute
-      } else {
-        throw new IllegalArgumentException(s"Cannot recognize type $attrType.")
-      }
-    factory.fromJsonValue(json)
+    getFactory(attrType).fromJsonValue(json)
+  }
+
+  override def fromMetadata(metadata: Metadata): Attribute = {
+    import AttributeKey._
+    val attrType = if (metadata.contains(Type)) {
+      metadata.getString(Type)
+    } else {
+      AttributeType.Numeric.name
+    }
+    getFactory(attrType).fromMetadata(metadata)
+  }
+
+  private def getFactory(attrType: String): AttributeFactory = {
+    if (attrType == AttributeType.Numeric.name) {
+      NumericAttribute
+    } else if (attrType == AttributeType.Nominal.name) {
+      NominalAttribute
+    } else if (attrType == AttributeType.Binary.name) {
+      BinaryAttribute
+    } else {
+      throw new IllegalArgumentException(s"Cannot recognize type $attrType.")
+    }
   }
 }
 
@@ -134,6 +148,20 @@ case class NumericAttribute private[ml] (
   override def isNumeric: Boolean = true
 
   override def isNominal: Boolean = false
+
+  /** Convert this attribute to metadata. */
+  override def toMetadata(withType: Boolean): Metadata = {
+    import AttributeKey._
+    val bldr = new MetadataBuilder()
+    if (withType) bldr.putString(Type, attrType.name)
+    name.foreach(bldr.putString(Name, _))
+    index.foreach(bldr.putLong(Index, _))
+    min.foreach(bldr.putDouble(Min, _))
+    max.foreach(bldr.putDouble(Max, _))
+    std.foreach(bldr.putDouble(Std, _))
+    sparsity.foreach(bldr.putDouble(Sparsity, _))
+    bldr.build()
+  }
 }
 
 object NumericAttribute extends AttributeFactory {
@@ -150,6 +178,17 @@ object NumericAttribute extends AttributeFactory {
     val std = (json \ Std).extractOpt[Double]
     val sparsity = (json \ Sparsity).extractOpt[Double]
     new NumericAttribute(name, index, min, max, std, sparsity)
+  }
+
+  override def fromMetadata(metadata: Metadata): NumericAttribute = {
+    import AttributeKey._
+    val name = if (metadata.contains(Name)) Some(metadata.getString(Name)) else None
+    val index = if (metadata.contains(Index)) Some(metadata.getLong(Index).toInt) else None
+    val min = if (metadata.contains(Min)) Some(metadata.getDouble(Min)) else None
+    val max = if (metadata.contains(Max)) Some(metadata.getDouble(Max)) else None
+    val std = if (metadata.contains(Std)) Some(metadata.getDouble(Std)) else None
+    val sparsity = if (metadata.contains(Sparsity)) Some(metadata.getDouble(Sparsity)) else None
+    NumericAttribute(name, index, min, max, std, sparsity)
   }
 }
 
@@ -210,6 +249,18 @@ case class NominalAttribute private[ml] (
 
   override def withIndex(index: Int): NominalAttribute = copy(index = Some(index))
   override def withoutIndex: NominalAttribute = copy(index = None)
+
+  override def toMetadata(withType: Boolean): Metadata = {
+    import AttributeKey._
+    val bldr = new MetadataBuilder()
+    if (withType) bldr.putString(Type, attrType.name)
+    name.foreach(bldr.putString(Name, _))
+    index.foreach(bldr.putLong(Index, _))
+    isOrdinal.foreach(bldr.putBoolean(IsOrdinal, _))
+    cardinality.foreach(bldr.putLong(Cardinality, _))
+    values.foreach(v => bldr.putStringArray(Values, v.toArray))
+    bldr.build()
+  }
 }
 
 object NominalAttribute extends AttributeFactory {
@@ -225,6 +276,18 @@ object NominalAttribute extends AttributeFactory {
     val cardinality = (json \ Cardinality).extractOpt[Int]
     val values = (json \ Values).toOption.map(_.extract[Seq[String]])
     new NominalAttribute(name, index, isOrdinal, cardinality, values)
+  }
+
+  override def fromMetadata(metadata: Metadata): NominalAttribute = {
+    import AttributeKey._
+    val name = if (metadata.contains(Name)) Some(metadata.getString(Name)) else None
+    val index = if (metadata.contains(Index)) Some(metadata.getLong(Index).toInt) else None
+    val isOrdinal = if (metadata.contains(IsOrdinal)) Some(metadata.getBoolean(IsOrdinal)) else None
+    val cardinality =
+      if (metadata.contains(Cardinality)) Some(metadata.getLong(Cardinality).toInt) else None
+    val values =
+      if (metadata.contains(Values)) Some(metadata.getStringArray(Values).toSeq) else None
+    NominalAttribute(name, index, isOrdinal, cardinality, values)
   }
 }
 
@@ -257,18 +320,37 @@ case class BinaryAttribute private[ml] (
 
   override def withIndex(index: Int): Attribute = copy(index= Some(index))
   override def withoutIndex: Attribute = copy(index = None)
+
+  override def toMetadata(withType: Boolean): Metadata = {
+    import AttributeKey._
+    val bldr = new MetadataBuilder
+    if (withType) bldr.putString(Type, attrType.name)
+    name.foreach(bldr.putString(Name, _))
+    index.foreach(bldr.putLong(Index, _))
+    values.foreach(v => bldr.putStringArray(Values, v.toArray))
+    bldr.build()
+  }
 }
 
 object BinaryAttribute extends AttributeFactory {
 
   final val defaultAttr: BinaryAttribute = new BinaryAttribute
 
-  override private[ml] def fromJsonValue(json: JValue): Attribute = {
+  override private[ml] def fromJsonValue(json: JValue): BinaryAttribute = {
     implicit val formats = DefaultFormats
     import AttributeKey._
     val name = (json \ Name).extractOpt[String]
     val index = (json \ Index).extractOpt[Int]
     val values = (json \ Values).toOption.map(_.extract[Seq[String]])
+    BinaryAttribute(name, index, values)
+  }
+
+  override def fromMetadata(metadata: Metadata): BinaryAttribute = {
+    import AttributeKey._
+    val name = if (metadata.contains(Name)) Some(metadata.getString(Name)) else None
+    val index = if (metadata.contains(Index)) Some(metadata.getLong(Index).toInt) else None
+    val values =
+      if (metadata.contains(Values)) Some(metadata.getStringArray(Values).toSeq) else None
     BinaryAttribute(name, index, values)
   }
 }
