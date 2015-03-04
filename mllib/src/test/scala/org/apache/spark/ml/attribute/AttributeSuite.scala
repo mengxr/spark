@@ -17,6 +17,7 @@
 
 package org.apache.spark.ml.attribute
 
+import org.apache.spark.sql.types.Metadata
 import org.scalatest.FunSuite
 
 class AttributeSuite extends FunSuite {
@@ -32,8 +33,8 @@ class AttributeSuite extends FunSuite {
     assert(attr.max.isEmpty)
     assert(attr.std.isEmpty)
     assert(attr.sparsity.isEmpty)
-    assert(attr.toJson === json)
-    assert(attr === Attribute.fromJson(json))
+    assert(attr.toString === json)
+    assert(attr === Attribute.fromMetadata(Metadata.fromJson(json)))
   }
 
   test("customized numeric attribute") {
@@ -48,8 +49,8 @@ class AttributeSuite extends FunSuite {
     assert(!attr.isNominal)
     assert(attr.name === Some(name))
     assert(attr.index === Some(index))
-    assert(attr.toJson === json)
-    assert(attr === Attribute.fromJson(json))
+    assert(attr.toString === json)
+    assert(attr === Attribute.fromMetadata(Metadata.fromJson(json)))
   }
 
   test("default nominal attribute") {
@@ -63,8 +64,8 @@ class AttributeSuite extends FunSuite {
     assert(attr.values.isEmpty)
     assert(attr.cardinality.isEmpty)
     assert(attr.isOrdinal.isEmpty)
-    assert(attr.toJson === json)
-    assert(attr === Attribute.fromJson(json))
+    assert(attr.toString === json)
+    assert(attr === Attribute.fromMetadata(Metadata.fromJson(json)))
   }
 
   test("customized nominal attribute") {
@@ -82,7 +83,7 @@ class AttributeSuite extends FunSuite {
     assert(attr.name === Some(name))
     assert(attr.index === Some(index))
     assert(attr.values === Some(values))
-    assert(attr.toJson === json)
-    assert(attr === Attribute.fromJson(json))
+    assert(attr.toString === json)
+    assert(attr === Attribute.fromMetadata(Metadata.fromJson(json)))
   }
 }

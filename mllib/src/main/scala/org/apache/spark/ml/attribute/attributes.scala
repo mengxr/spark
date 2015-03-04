@@ -17,10 +17,6 @@
 
 package org.apache.spark.ml.attribute
 
-import org.json4s._
-import org.json4s.JsonDSL._
-import org.json4s.jackson.JsonMethods._
-
 import org.apache.spark.sql.types.{MetadataBuilder, Metadata}
 
 sealed abstract class Attribute extends Serializable {
@@ -42,33 +38,21 @@ sealed abstract class Attribute extends Serializable {
 
   def isNominal: Boolean
 
-  def toJson: String = compact(render(jsonValue))
-
-  private[ml] def jsonValue: JValue
-
   /** Convert this attribute to metadata. */
   def toMetadata(withType: Boolean): Metadata
 
   /** Converts this attribute to Metadata without type info. */
   def toMetadata: Metadata = toMetadata(withType = true)
+
+  override def toString: String = toMetadata.toString
 }
 
 private[attribute] trait AttributeFactory {
-
-  private[ml] def fromJsonValue(json: JValue): Attribute
-
-  def fromJson(json: String): Attribute = fromJsonValue(parse(json))
 
   def fromMetadata(metadata: Metadata): Attribute
 }
 
 object Attribute extends AttributeFactory {
-
-  private[ml] override def fromJsonValue(json: JValue): Attribute = {
-    implicit val formats = DefaultFormats
-    val attrType = (json \ AttributeKey.Type).extractOrElse(AttributeType.Numeric.name)
-    getFactory(attrType).fromJsonValue(json)
-  }
 
   override def fromMetadata(metadata: Metadata): Attribute = {
     import AttributeKey._
@@ -117,16 +101,6 @@ case class NumericAttribute private[ml] (
 
   override def attrType: AttributeType = AttributeType.Numeric
 
-  override private[ml] def jsonValue: JValue = {
-    import AttributeKey._
-    (Name -> name) ~
-      (Index -> index) ~
-      (Min -> min) ~
-      (Max -> max) ~
-      (Std -> std) ~
-      (Sparsity -> sparsity)
-  }
-
   override def withName(name: String): NumericAttribute = copy(name = Some(name))
   override def withoutName: NumericAttribute = copy(name = None)
 
@@ -168,18 +142,6 @@ object NumericAttribute extends AttributeFactory {
 
   val defaultAttr: NumericAttribute = new NumericAttribute
 
-  override def fromJsonValue(json: JValue): NumericAttribute = {
-    implicit val formats = DefaultFormats
-    import AttributeKey._
-    val name = (json \ Name).extractOpt[String]
-    val index = (json \ Index).extractOpt[Int]
-    val min = (json \ Min).extractOpt[Double]
-    val max = (json \ Max).extractOpt[Double]
-    val std = (json \ Std).extractOpt[Double]
-    val sparsity = (json \ Sparsity).extractOpt[Double]
-    new NumericAttribute(name, index, min, max, std, sparsity)
-  }
-
   override def fromMetadata(metadata: Metadata): NumericAttribute = {
     import AttributeKey._
     val name = if (metadata.contains(Name)) Some(metadata.getString(Name)) else None
@@ -212,20 +174,6 @@ case class NominalAttribute private[ml] (
   /** Index of a specific value. */
   def indexOf(value: String): Int = {
     valueToIndex(value)
-  }
-
-  override private[ml] def jsonValue: JValue = {
-    import AttributeKey._
-    val json = (Type -> attrType.name) ~
-      (Name -> name) ~
-      (Index -> index) ~
-      (IsOrdinal -> isOrdinal) ~
-      (Cardinality -> cardinality)
-    if (values.isDefined) {
-      json ~ (Values -> values.get)
-    } else {
-      json
-    }
   }
 
   def withValues(values: Seq[String]): NominalAttribute = {
@@ -267,17 +215,6 @@ object NominalAttribute extends AttributeFactory {
 
   final val defaultAttr: NominalAttribute = new NominalAttribute
 
-  override def fromJsonValue(json: JValue): NominalAttribute = {
-    implicit val formats = DefaultFormats
-    import AttributeKey._
-    val name = (json \ Name).extractOpt[String]
-    val index = (json \ Index).extractOpt[Int]
-    val isOrdinal = (json \ IsOrdinal).extractOpt[Boolean]
-    val cardinality = (json \ Cardinality).extractOpt[Int]
-    val values = (json \ Values).toOption.map(_.extract[Seq[String]])
-    new NominalAttribute(name, index, isOrdinal, cardinality, values)
-  }
-
   override def fromMetadata(metadata: Metadata): NominalAttribute = {
     import AttributeKey._
     val name = if (metadata.contains(Name)) Some(metadata.getString(Name)) else None
@@ -303,18 +240,6 @@ case class BinaryAttribute private[ml] (
 
   override def isNominal: Boolean = true
 
-  override private[ml] def jsonValue: JValue = {
-    import AttributeKey._
-    val json = (Type -> attrType.name) ~
-      (Name -> name) ~
-      (Index -> index)
-    if (values.isDefined) {
-      json ~ (Values -> values.get)
-    } else {
-      json
-    }
-  }
-
   override def withName(name: String): Attribute = copy(name = Some(name))
   override def withoutName: Attribute = copy(name = None)
 
@@ -335,15 +260,6 @@ case class BinaryAttribute private[ml] (
 object BinaryAttribute extends AttributeFactory {
 
   final val defaultAttr: BinaryAttribute = new BinaryAttribute
-
-  override private[ml] def fromJsonValue(json: JValue): BinaryAttribute = {
-    implicit val formats = DefaultFormats
-    import AttributeKey._
-    val name = (json \ Name).extractOpt[String]
-    val index = (json \ Index).extractOpt[Int]
-    val values = (json \ Values).toOption.map(_.extract[Seq[String]])
-    BinaryAttribute(name, index, values)
-  }
 
   override def fromMetadata(metadata: Metadata): BinaryAttribute = {
     import AttributeKey._
