@@ -42,7 +42,7 @@ sealed abstract class Attribute extends Serializable {
   def toMetadata(withType: Boolean): Metadata
 
   /** Converts this attribute to Metadata without type info. */
-  def toMetadata: Metadata = toMetadata(withType = true)
+  def toMetadata(): Metadata = toMetadata(withType = true)
 
   override def toString: String = toMetadata.toString
 }
@@ -136,6 +136,8 @@ case class NumericAttribute private[ml] (
     sparsity.foreach(bldr.putDouble(Sparsity, _))
     bldr.build()
   }
+
+  override def toMetadata(): Metadata = toMetadata(withType = false)
 }
 
 object NumericAttribute extends AttributeFactory {
@@ -240,11 +242,14 @@ case class BinaryAttribute private[ml] (
 
   override def isNominal: Boolean = true
 
-  override def withName(name: String): Attribute = copy(name = Some(name))
-  override def withoutName: Attribute = copy(name = None)
+  override def withName(name: String): BinaryAttribute = copy(name = Some(name))
+  override def withoutName: BinaryAttribute = copy(name = None)
 
-  override def withIndex(index: Int): Attribute = copy(index= Some(index))
-  override def withoutIndex: Attribute = copy(index = None)
+  override def withIndex(index: Int): BinaryAttribute = copy(index = Some(index))
+  override def withoutIndex: BinaryAttribute = copy(index = None)
+
+  def withValues(values: Seq[String]): BinaryAttribute = copy(values = Some(values))
+  def withoutValues: BinaryAttribute = copy(values = None)
 
   override def toMetadata(withType: Boolean): Metadata = {
     import AttributeKey._
