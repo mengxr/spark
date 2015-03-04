@@ -20,7 +20,7 @@ package org.apache.spark.ml.attribute;
 import org.junit.Test;
 import org.junit.Assert;
 
-public class JavaAttributeTypeSuite {
+public class JavaAttributeSuite {
 
   @Test
   public void testAttributeType() {
@@ -30,5 +30,26 @@ public class JavaAttributeTypeSuite {
     Assert.assertEquals(numericType, NumericAttribute.defaultAttr().attrType());
     Assert.assertEquals(nominalType, NominalAttribute.defaultAttr().attrType());
     Assert.assertEquals(binaryType, BinaryAttribute.defaultAttr().attrType());
+  }
+
+  @Test
+  public void testNumericAttribute() {
+    NumericAttribute attr = NumericAttribute.defaultAttr()
+      .withName("age").withIndex(0).withMin(0.0).withMax(1.0).withStd(0.5).withSparsity(0.4);
+    Assert.assertEquals(attr, Attribute.fromMetadata(attr.toMetadata()));
+  }
+
+  @Test
+  public void testNominalAttribute() {
+    NominalAttribute attr = NominalAttribute.defaultAttr()
+      .withName("size").withIndex(1).withValues("small", "medium", "large");
+    Assert.assertEquals(attr, Attribute.fromMetadata(attr.toMetadata()));
+  }
+
+  @Test
+  public void testBinaryAttribute() {
+    BinaryAttribute attr = BinaryAttribute.defaultAttr()
+      .withName("clicked").withIndex(2).withValues("no", "yes");
+    Assert.assertEquals(attr, Attribute.fromMetadata(attr.toMetadata()));
   }
 }

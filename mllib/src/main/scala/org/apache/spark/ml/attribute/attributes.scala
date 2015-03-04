@@ -17,7 +17,9 @@
 
 package org.apache.spark.ml.attribute
 
-import org.apache.spark.sql.types.{MetadataBuilder, Metadata}
+import scala.annotation.varargs
+
+import org.apache.spark.sql.types.{Metadata, MetadataBuilder}
 
 sealed abstract class Attribute extends Serializable {
 
@@ -55,7 +57,7 @@ private[attribute] trait AttributeFactory {
 object Attribute extends AttributeFactory {
 
   override def fromMetadata(metadata: Metadata): Attribute = {
-    import AttributeKey._
+    import org.apache.spark.ml.attribute.AttributeKey._
     val attrType = if (metadata.contains(Type)) {
       metadata.getString(Type)
     } else {
@@ -125,7 +127,7 @@ case class NumericAttribute private[ml] (
 
   /** Convert this attribute to metadata. */
   override def toMetadata(withType: Boolean): Metadata = {
-    import AttributeKey._
+    import org.apache.spark.ml.attribute.AttributeKey._
     val bldr = new MetadataBuilder()
     if (withType) bldr.putString(Type, attrType.name)
     name.foreach(bldr.putString(Name, _))
@@ -145,7 +147,7 @@ object NumericAttribute extends AttributeFactory {
   val defaultAttr: NumericAttribute = new NumericAttribute
 
   override def fromMetadata(metadata: Metadata): NumericAttribute = {
-    import AttributeKey._
+    import org.apache.spark.ml.attribute.AttributeKey._
     val name = if (metadata.contains(Name)) Some(metadata.getString(Name)) else None
     val index = if (metadata.contains(Index)) Some(metadata.getLong(Index).toInt) else None
     val min = if (metadata.contains(Min)) Some(metadata.getDouble(Min)) else None
@@ -182,6 +184,11 @@ case class NominalAttribute private[ml] (
     copy(cardinality = None, values = Some(values))
   }
 
+  @varargs
+  def withValues(first: String, others: String*): NominalAttribute = {
+    withValues(first +: others)
+  }
+
   def withoutValues: NominalAttribute = {
     copy(values = None)
   }
@@ -201,7 +208,7 @@ case class NominalAttribute private[ml] (
   override def withoutIndex: NominalAttribute = copy(index = None)
 
   override def toMetadata(withType: Boolean): Metadata = {
-    import AttributeKey._
+    import org.apache.spark.ml.attribute.AttributeKey._
     val bldr = new MetadataBuilder()
     if (withType) bldr.putString(Type, attrType.name)
     name.foreach(bldr.putString(Name, _))
@@ -218,7 +225,7 @@ object NominalAttribute extends AttributeFactory {
   final val defaultAttr: NominalAttribute = new NominalAttribute
 
   override def fromMetadata(metadata: Metadata): NominalAttribute = {
-    import AttributeKey._
+    import org.apache.spark.ml.attribute.AttributeKey._
     val name = if (metadata.contains(Name)) Some(metadata.getString(Name)) else None
     val index = if (metadata.contains(Index)) Some(metadata.getLong(Index).toInt) else None
     val isOrdinal = if (metadata.contains(IsOrdinal)) Some(metadata.getBoolean(IsOrdinal)) else None
@@ -249,10 +256,12 @@ case class BinaryAttribute private[ml] (
   override def withoutIndex: BinaryAttribute = copy(index = None)
 
   def withValues(values: Seq[String]): BinaryAttribute = copy(values = Some(values))
+  def withValues(negative: String, positive: String): BinaryAttribute =
+    copy(values = Some(Seq(negative, positive)))
   def withoutValues: BinaryAttribute = copy(values = None)
 
   override def toMetadata(withType: Boolean): Metadata = {
-    import AttributeKey._
+    import org.apache.spark.ml.attribute.AttributeKey._
     val bldr = new MetadataBuilder
     if (withType) bldr.putString(Type, attrType.name)
     name.foreach(bldr.putString(Name, _))
@@ -267,7 +276,7 @@ object BinaryAttribute extends AttributeFactory {
   final val defaultAttr: BinaryAttribute = new BinaryAttribute
 
   override def fromMetadata(metadata: Metadata): BinaryAttribute = {
-    import AttributeKey._
+    import org.apache.spark.ml.attribute.AttributeKey._
     val name = if (metadata.contains(Name)) Some(metadata.getString(Name)) else None
     val index = if (metadata.contains(Index)) Some(metadata.getLong(Index).toInt) else None
     val values =
