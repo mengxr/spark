@@ -19,7 +19,7 @@ package org.apache.spark.ml.attribute
 
 import org.scalatest.FunSuite
 
-import org.apache.spark.sql.types.Metadata
+import org.apache.spark.sql.types.{DoubleType, MetadataBuilder, Metadata}
 
 class AttributeSuite extends FunSuite {
 
@@ -41,6 +41,9 @@ class AttributeSuite extends FunSuite {
     assert(attr.toMetadata(withType = true) === metadataWithType)
     assert(attr === Attribute.fromMetadata(metadata))
     assert(attr === Attribute.fromMetadata(metadataWithType))
+    intercept[NoSuchElementException] {
+      attr.toStructField()
+    }
   }
 
   test("customized numeric attribute") {
@@ -61,6 +64,15 @@ class AttributeSuite extends FunSuite {
     assert(attr.toMetadata(withType = true) === metadataWithType)
     assert(attr === Attribute.fromMetadata(metadata))
     assert(attr === Attribute.fromMetadata(metadataWithType))
+    val field = attr.toStructField()
+    assert(field.dataType === DoubleType)
+    assert(!field.nullable)
+    assert(attr.withoutIndex === Attribute.fromStructField(field))
+    val existingMetadata = new MetadataBuilder()
+      .putString("name", "test")
+      .build()
+    assert(attr.toStructField(existingMetadata).metadata.getString("name") === "test")
+
     val attr2 =
       attr.withoutName.withoutIndex.withMin(0.0).withMax(1.0).withStd(0.5).withSparsity(0.3)
     assert(attr2.name.isEmpty)
@@ -89,6 +101,9 @@ class AttributeSuite extends FunSuite {
     assert(attr.toMetadata(withType = false) === metadataWithoutType)
     assert(attr === Attribute.fromMetadata(metadata))
     assert(attr === NominalAttribute.fromMetadata(metadataWithoutType))
+    intercept[NoSuchElementException] {
+      attr.toStructField()
+    }
   }
 
   test("customized nominal attribute") {
@@ -115,6 +130,8 @@ class AttributeSuite extends FunSuite {
     assert(attr.toMetadata(withType = false) === metadataWithoutType)
     assert(attr === Attribute.fromMetadata(metadata))
     assert(attr === NominalAttribute.fromMetadata(metadataWithoutType))
+    assert(attr.withoutIndex === Attribute.fromStructField(attr.toStructField()))
+
     val attr2 = attr.withoutName.withoutIndex.withValues(attr.values.get :+ "x-large")
     assert(attr2.name.isEmpty)
     assert(attr2.index.isEmpty)
@@ -139,6 +156,9 @@ class AttributeSuite extends FunSuite {
     assert(attr.toMetadata(withType = false) === metadataWithoutType)
     assert(attr === Attribute.fromMetadata(metadata))
     assert(attr === BinaryAttribute.fromMetadata(metadataWithoutType))
+    intercept[NoSuchElementException] {
+      attr.toStructField()
+    }
   }
 
   test("customized binary attribute") {
@@ -164,5 +184,6 @@ class AttributeSuite extends FunSuite {
     assert(attr.toMetadata(withType = false) === metadataWithoutType)
     assert(attr === Attribute.fromMetadata(metadata))
     assert(attr === BinaryAttribute.fromMetadata(metadataWithoutType))
+    assert(attr.withoutIndex === Attribute.fromStructField(attr.toStructField()))
   }
 }
