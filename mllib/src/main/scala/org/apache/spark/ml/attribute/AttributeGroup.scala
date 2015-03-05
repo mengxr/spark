@@ -21,27 +21,23 @@ import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark.sql.types.{Metadata, MetadataBuilder}
 
-class AttributeGroup(val name: String, val attributes: Array[Attribute]) {
+class AttributeGroup(val name: String, attrs: Array[Attribute]) extends Serializable {
 
-  attributes.view.zipWithIndex.foreach { case (attr, i) =>
-    require(attr.index.get == i)
-  }
+  val attributes: Array[Attribute] = attrs.view.zipWithIndex.map { case (attr, i) =>
+    attr.withIndex(i)
+  }.toArray
 
   private lazy val nameToIndex: Map[String, Int] = {
-    if (attributes != null) {
-      attributes.view.map(_.name).zipWithIndex.flatMap { case (attrName, index) =>
-        attrName.map(_ -> index)
-      }.toMap
-    } else {
-      Map.empty
-    }
+    attributes.view.flatMap { attr =>
+      attr.name.map(_ -> attr.index.get)
+    }.toMap
   }
 
-  /** Test whether this attribute group has a name. */
-  def hasName: Boolean = name != null
-
   /** Number of attributes. */
-  def size: Int = if (attributes == null) -1 else attributes.length
+  def size: Int = attributes.length
+
+  /** Test whether this attribute group contains a specific attribute. */
+  def hasAttr(attrName: String): Boolean = nameToIndex.contains(attrName)
 
   /** Index of an attribute specified by name. */
   def indexOf(attrName: String): Int = nameToIndex(attrName)
@@ -51,6 +47,8 @@ class AttributeGroup(val name: String, val attributes: Array[Attribute]) {
     attributes(indexOf(attrName))
   }
 
+  def apply(attrIndex: Int): Attribute = attributes(attrIndex)
+
   def toMetadata: Metadata = {
     import org.apache.spark.ml.attribute.AttributeGroup._
     val numericMetadata = ArrayBuffer.empty[Metadata]
@@ -58,6 +56,7 @@ class AttributeGroup(val name: String, val attributes: Array[Attribute]) {
     val binaryMetadata = ArrayBuffer.empty[Metadata]
     attributes.foreach {
       case numeric: NumericAttribute =>
+        // Skip default numeric attributes.
         if (numeric.withoutIndex != NumericAttribute.defaultAttr) {
           numericMetadata += numeric.toMetadata(withType = false)
         }
@@ -80,6 +79,22 @@ class AttributeGroup(val name: String, val attributes: Array[Attribute]) {
       .putLong(SIZE, attributes.length)
       .putMetadata(ATTRIBUTES, attrBldr.build())
       .build()
+  }
+
+  override def equals(other: Any): Boolean = {
+    other match {
+      case o: AttributeGroup =>
+        (name == o.name) && (attributes.toSeq == o.attributes.toSeq)
+      case _ =>
+        false
+    }
+  }
+
+  override def hashCode: Int = {
+    var sum = 17
+    sum = 37 * sum + name.hashCode
+    sum = 37 * sum + attributes.toSeq.hashCode
+    sum
   }
 }
 
@@ -117,9 +132,9 @@ object AttributeGroup {
     var i = 0
     while (i < size) {
       if (attributes(i) == null) {
-        attributes(i) = NumericAttribute.defaultAttr.withIndex(i)
-        i += 1
+        attributes(i) = NumericAttribute.defaultAttr
       }
+      i += 1
     }
     new AttributeGroup(name, attributes)
   }
