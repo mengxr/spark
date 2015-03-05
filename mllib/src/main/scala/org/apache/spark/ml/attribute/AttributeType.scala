@@ -21,38 +21,22 @@ package org.apache.spark.ml.attribute
  * An enum-like type for attribute types: [[AttributeType$#Numeric]], [[AttributeType$#Nominal]],
  * and [[AttributeType$#Binary]].
  */
-sealed abstract class AttributeType {
-
-  /** Name of the attribute. */
-  def name: String
-
-  override def toString: String = name
-
-  override def equals(other: Any): Boolean = {
-    other match {
-      case attrType: AttributeType =>
-        name == attrType.name
-      case _ =>
-        false
-    }
-  }
-
-  override def hashCode: Int = name.hashCode
-}
+sealed abstract class AttributeType(val name: String)
 
 object AttributeType {
 
-  final val Numeric: AttributeType = new AttributeType {
-    override def name: String = "numeric"
-  }
+  private case object _Numeric extends AttributeType("numeric")
+  private case object _Nominal extends AttributeType("nominal")
+  private case object _Binary extends AttributeType("binary")
 
-  final val Nominal: AttributeType = new AttributeType {
-    override def name: String = "nominal"
-  }
+  /** Numeric type. */
+  final val Numeric: AttributeType = _Numeric
 
-  final val Binary: AttributeType = new AttributeType {
-    override def name: String = "binary"
-  }
+  /** Nominal type. */
+  final val Nominal: AttributeType = _Nominal
+
+  /** Binary type. */
+  final val Binary: AttributeType = _Binary
 
   /**
    * Gets the [[AttributeType]] object from its name.
