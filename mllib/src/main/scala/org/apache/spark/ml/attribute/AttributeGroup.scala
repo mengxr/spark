@@ -22,6 +22,12 @@ import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.mllib.linalg.VectorUDT
 import org.apache.spark.sql.types.{Metadata, MetadataBuilder, StructField}
 
+/**
+ * Attributes that describe a vector ML column.
+ *
+ * @param name name of the attribute group (the ML column name)
+ * @param attrs attributes
+ */
 class AttributeGroup(val name: String, attrs: Array[Attribute]) extends Serializable {
 
   val attributes: Array[Attribute] = attrs.view.zipWithIndex.map { case (attr, i) =>
