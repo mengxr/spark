@@ -25,18 +25,23 @@ sealed abstract class AttributeType(val name: String)
 
 object AttributeType {
 
-  private case object _Numeric extends AttributeType("numeric")
-  private case object _Nominal extends AttributeType("nominal")
-  private case object _Binary extends AttributeType("binary")
-
   /** Numeric type. */
-  final val Numeric: AttributeType = _Numeric
+  final val Numeric: AttributeType = {
+    case object Numeric extends AttributeType("numeric")
+    Numeric
+  }
 
   /** Nominal type. */
-  final val Nominal: AttributeType = _Nominal
+  final val Nominal: AttributeType = {
+    case object Nominal extends AttributeType("nominal")
+    Nominal
+  }
 
   /** Binary type. */
-  final val Binary: AttributeType = _Binary
+  final val Binary: AttributeType = {
+    case object Binary extends AttributeType("binary")
+    Binary
+  }
 
   /**
    * Gets the [[AttributeType]] object from its name.

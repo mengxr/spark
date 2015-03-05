@@ -22,6 +22,7 @@ import org.scalatest.FunSuite
 import org.apache.spark.sql.types.Metadata
 
 class AttributeSuite extends FunSuite {
+
   test("default numeric attribute") {
     val attr: NumericAttribute = NumericAttribute.defaultAttr
     val metadata = Metadata.fromJson("{}")
