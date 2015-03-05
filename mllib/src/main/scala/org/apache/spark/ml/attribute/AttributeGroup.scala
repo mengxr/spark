@@ -30,11 +30,7 @@ class AttributeGroup(val name: String, val attributes: Array[Attribute]) {
   private lazy val nameToIndex: Map[String, Int] = {
     if (attributes != null) {
       attributes.view.map(_.name).zipWithIndex.flatMap { case (attrName, index) =>
-        if (attrName != null) {
-          Some(attrName -> index)
-        } else {
-          None
-        }
+        attrName.map(_ -> index)
       }.toMap
     } else {
       Map.empty

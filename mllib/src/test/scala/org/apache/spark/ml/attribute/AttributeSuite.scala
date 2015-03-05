@@ -93,7 +93,7 @@ class AttributeSuite extends FunSuite {
   test("customized nominal attribute") {
     val name = "size"
     val index = 1
-    val values = Seq("small", "medium", "large")
+    val values = Array("small", "medium", "large")
     val metadata = Metadata.fromJson(
       """{"type":"nominal","name":"size","index":1,"values":["small","medium","large"]}""")
     val metadataWithoutType = Metadata.fromJson(
@@ -108,6 +108,7 @@ class AttributeSuite extends FunSuite {
     assert(attr.name === Some(name))
     assert(attr.index === Some(index))
     assert(attr.values === Some(values))
+    assert(attr.indexOf("medium") === 1)
     assert(attr.toMetadata() === metadata)
     assert(attr.toMetadata(withType = true) === metadata)
     assert(attr.toMetadata(withType = false) === metadataWithoutType)
@@ -116,7 +117,8 @@ class AttributeSuite extends FunSuite {
     val attr2 = attr.withoutName.withoutIndex.withValues(attr.values.get :+ "x-large")
     assert(attr2.name.isEmpty)
     assert(attr2.index.isEmpty)
-    assert(attr2.values.get === Seq("small", "medium", "large", "x-large"))
+    assert(attr2.values.get === Array("small", "medium", "large", "x-large"))
+    assert(attr2.indexOf("x-large") === 3)
     assert(attr2 === Attribute.fromMetadata(attr2.toMetadata()))
     assert(attr2 === NominalAttribute.fromMetadata(attr2.toMetadata(withType = false)))
   }
@@ -141,7 +143,7 @@ class AttributeSuite extends FunSuite {
   test("customized binary attribute") {
     val name = "clicked"
     val index = 2
-    val values = Seq("false", "true")
+    val values = Array("false", "true")
     val metadata = Metadata.fromJson(
       """{"type":"binary","name":"clicked","index":2,"values":["false","true"]}""")
     val metadataWithoutType = Metadata.fromJson(
@@ -149,13 +151,13 @@ class AttributeSuite extends FunSuite {
     val attr = BinaryAttribute.defaultAttr
       .withName(name)
       .withIndex(index)
-      .withValues(values)
+      .withValues(values(0), values(1))
     assert(attr.attrType === AttributeType.Binary)
     assert(attr.isNumeric)
     assert(attr.isNominal)
     assert(attr.name === Some(name))
     assert(attr.index === Some(index))
-    assert(attr.values === Some(values))
+    assert(attr.values.get === values)
     assert(attr.toMetadata() === metadata)
     assert(attr.toMetadata(withType = true) === metadata)
     assert(attr.toMetadata(withType = false) === metadataWithoutType)

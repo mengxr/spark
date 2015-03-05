@@ -23,7 +23,7 @@ import org.apache.spark.sql.types.{Metadata, MetadataBuilder}
 
 sealed abstract class Attribute extends Serializable {
 
-  /** Attribute type: {0: numeric, 1: nominal, 2: binary}. */
+  /** Attribute type. */
   def attrType: AttributeType
 
   /** Name of the attribute. None if it is not set. */
@@ -46,7 +46,7 @@ sealed abstract class Attribute extends Serializable {
   /** Converts this attribute to Metadata without type info. */
   def toMetadata(): Metadata = toMetadata(withType = true)
 
-  override def toString: String = toMetadata.toString
+  override def toString: String = toMetadata().toString
 }
 
 private[attribute] trait AttributeFactory {
@@ -92,13 +92,13 @@ private[attribute] object AttributeKey {
   final val Cardinality: String = "cardinality"
 }
 
-case class NumericAttribute private[ml] (
+class NumericAttribute private[ml] (
     override val name: Option[String] = None,
     override val index: Option[Int] = None,
-    min: Option[Double] = None,
-    max: Option[Double] = None,
-    std: Option[Double] = None,
-    sparsity: Option[Double] = None)
+    val min: Option[Double] = None,
+    val max: Option[Double] = None,
+    val std: Option[Double] = None,
+    val sparsity: Option[Double] = None)
   extends Attribute {
 
   override def attrType: AttributeType = AttributeType.Numeric
@@ -140,6 +140,41 @@ case class NumericAttribute private[ml] (
   }
 
   override def toMetadata(): Metadata = toMetadata(withType = false)
+
+  private def copy(
+      name: Option[String] = name,
+      index: Option[Int] = index,
+      min: Option[Double] = min,
+      max: Option[Double] = max,
+      std: Option[Double] = std,
+      sparsity: Option[Double] = sparsity): NumericAttribute = {
+    new NumericAttribute(name, index, min, max, std, sparsity)
+  }
+
+  override def equals(other: Any): Boolean = {
+    other match {
+      case o: NumericAttribute =>
+        (name == o.name) &&
+          (index == o.index) &&
+          (min == o.min) &&
+          (max == o.max) &&
+          (std == o.std) &&
+          (sparsity == o.sparsity)
+      case _ =>
+        false
+    }
+  }
+
+  override def hashCode: Int = {
+    var sum = 17
+    sum = 37 * sum + name.hashCode
+    sum = 37 * sum + index.hashCode
+    sum = 37 * sum + min.hashCode
+    sum = 37 * sum + max.hashCode
+    sum = 37 * sum + std.hashCode
+    sum = 37 * sum + sparsity.hashCode
+    sum
+  }
 }
 
 object NumericAttribute extends AttributeFactory {
@@ -154,16 +189,16 @@ object NumericAttribute extends AttributeFactory {
     val max = if (metadata.contains(Max)) Some(metadata.getDouble(Max)) else None
     val std = if (metadata.contains(Std)) Some(metadata.getDouble(Std)) else None
     val sparsity = if (metadata.contains(Sparsity)) Some(metadata.getDouble(Sparsity)) else None
-    NumericAttribute(name, index, min, max, std, sparsity)
+    new NumericAttribute(name, index, min, max, std, sparsity)
   }
 }
 
-case class NominalAttribute private[ml] (
+class NominalAttribute private[ml] (
     override val name: Option[String] = None,
     override val index: Option[Int] = None,
-    isOrdinal: Option[Boolean] = None,
-    cardinality: Option[Int] = None,
-    values: Option[Seq[String]] = None) extends Attribute {
+    val isOrdinal: Option[Boolean] = None,
+    val cardinality: Option[Int] = None,
+    val values: Option[Array[String]] = None) extends Attribute {
 
   override def attrType: AttributeType = AttributeType.Nominal
 
@@ -180,13 +215,13 @@ case class NominalAttribute private[ml] (
     valueToIndex(value)
   }
 
-  def withValues(values: Seq[String]): NominalAttribute = {
+  def withValues(values: Array[String]): NominalAttribute = {
     copy(cardinality = None, values = Some(values))
   }
 
   @varargs
   def withValues(first: String, others: String*): NominalAttribute = {
-    withValues(first +: others)
+    copy(cardinality = None, values = Some((first +: others).toArray))
   }
 
   def withoutValues: NominalAttribute = {
@@ -199,6 +234,15 @@ case class NominalAttribute private[ml] (
     } else {
       copy(cardinality = Some(cardinality))
     }
+  }
+
+  private def copy(
+      name: Option[String] = name,
+      index: Option[Int] = index,
+      isOrdinal: Option[Boolean] = isOrdinal,
+      cardinality: Option[Int] = cardinality,
+      values: Option[Array[String]] = values): NominalAttribute = {
+    new NominalAttribute(name, index, isOrdinal, cardinality, values)
   }
 
   override def withName(name: String): NominalAttribute = copy(name = Some(name))
@@ -215,8 +259,31 @@ case class NominalAttribute private[ml] (
     index.foreach(bldr.putLong(Index, _))
     isOrdinal.foreach(bldr.putBoolean(IsOrdinal, _))
     cardinality.foreach(bldr.putLong(Cardinality, _))
-    values.foreach(v => bldr.putStringArray(Values, v.toArray))
+    values.foreach(v => bldr.putStringArray(Values, v))
     bldr.build()
+  }
+
+  override def equals(other: Any): Boolean = {
+    other match {
+      case o: NominalAttribute =>
+        (name == o.name) &&
+          (index == o.index) &&
+          (isOrdinal == o.isOrdinal) &&
+          (cardinality == o.cardinality) &&
+          (values.map(_.toSeq) == o.values.map(_.toSeq))
+      case _ =>
+        false
+    }
+  }
+
+  override def hashCode: Int = {
+    var sum = 17
+    sum = 37 * sum + name.hashCode
+    sum = 37 * sum + index.hashCode
+    sum = 37 * sum + isOrdinal.hashCode
+    sum = 37 * sum + cardinality.hashCode
+    sum = 37 * sum + values.map(_.toSeq).hashCode
+    sum
   }
 }
 
@@ -232,15 +299,15 @@ object NominalAttribute extends AttributeFactory {
     val cardinality =
       if (metadata.contains(Cardinality)) Some(metadata.getLong(Cardinality).toInt) else None
     val values =
-      if (metadata.contains(Values)) Some(metadata.getStringArray(Values).toSeq) else None
-    NominalAttribute(name, index, isOrdinal, cardinality, values)
+      if (metadata.contains(Values)) Some(metadata.getStringArray(Values)) else None
+    new NominalAttribute(name, index, isOrdinal, cardinality, values)
   }
 }
 
-case class BinaryAttribute private[ml] (
+class BinaryAttribute private[ml] (
     override val name: Option[String] = None,
     override val index: Option[Int] = None,
-    values: Option[Seq[String]] = None)
+    val values: Option[Array[String]] = None)
   extends Attribute {
 
   override def attrType: AttributeType = AttributeType.Binary
@@ -255,10 +322,16 @@ case class BinaryAttribute private[ml] (
   override def withIndex(index: Int): BinaryAttribute = copy(index = Some(index))
   override def withoutIndex: BinaryAttribute = copy(index = None)
 
-  def withValues(values: Seq[String]): BinaryAttribute = copy(values = Some(values))
   def withValues(negative: String, positive: String): BinaryAttribute =
-    copy(values = Some(Seq(negative, positive)))
+    copy(values = Some(Array(negative, positive)))
   def withoutValues: BinaryAttribute = copy(values = None)
+
+  private def copy(
+      name: Option[String] = name,
+      index: Option[Int] = index,
+      values: Option[Array[String]] = values): BinaryAttribute = {
+    new BinaryAttribute(name, index, values)
+  }
 
   override def toMetadata(withType: Boolean): Metadata = {
     import org.apache.spark.ml.attribute.AttributeKey._
@@ -266,8 +339,27 @@ case class BinaryAttribute private[ml] (
     if (withType) bldr.putString(Type, attrType.name)
     name.foreach(bldr.putString(Name, _))
     index.foreach(bldr.putLong(Index, _))
-    values.foreach(v => bldr.putStringArray(Values, v.toArray))
+    values.foreach(v => bldr.putStringArray(Values, v))
     bldr.build()
+  }
+
+  override def equals(other: Any): Boolean = {
+    other match {
+      case o: BinaryAttribute =>
+        (name == o.name) &&
+          (index == o.index) &&
+          (values.map(_.toSeq) == o.values.map(_.toSeq))
+      case _ =>
+        false
+    }
+  }
+
+  override def hashCode: Int = {
+    var sum = 17
+    sum = 37 * sum + name.hashCode
+    sum = 37 * sum + index.hashCode
+    sum = 37 * sum + values.map(_.toSeq).hashCode
+    sum
   }
 }
 
@@ -280,7 +372,7 @@ object BinaryAttribute extends AttributeFactory {
     val name = if (metadata.contains(Name)) Some(metadata.getString(Name)) else None
     val index = if (metadata.contains(Index)) Some(metadata.getLong(Index).toInt) else None
     val values =
-      if (metadata.contains(Values)) Some(metadata.getStringArray(Values).toSeq) else None
-    BinaryAttribute(name, index, values)
+      if (metadata.contains(Values)) Some(metadata.getStringArray(Values)) else None
+    new BinaryAttribute(name, index, values)
   }
 }
