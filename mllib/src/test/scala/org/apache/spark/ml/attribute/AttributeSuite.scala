@@ -45,8 +45,8 @@ class AttributeSuite extends FunSuite {
   test("customized numeric attribute") {
     val name = "age"
     val index = 0
-    val metadata = Metadata.fromJson("""{"name":"age","index":0}""")
-    val metadataWithType = Metadata.fromJson("""{"type":"numeric","name":"age","index":0}""")
+    val metadata = Metadata.fromJson("""{"name":"age","idx":0}""")
+    val metadataWithType = Metadata.fromJson("""{"type":"numeric","name":"age","idx":0}""")
     val attr: NumericAttribute = NumericAttribute.defaultAttr
       .withName(name)
       .withIndex(index)
@@ -95,9 +95,9 @@ class AttributeSuite extends FunSuite {
     val index = 1
     val values = Array("small", "medium", "large")
     val metadata = Metadata.fromJson(
-      """{"type":"nominal","name":"size","index":1,"values":["small","medium","large"]}""")
+      """{"type":"nominal","name":"size","idx":1,"vals":["small","medium","large"]}""")
     val metadataWithoutType = Metadata.fromJson(
-      """{"name":"size","index":1,"values":["small","medium","large"]}""")
+      """{"name":"size","idx":1,"vals":["small","medium","large"]}""")
     val attr: NominalAttribute = NominalAttribute.defaultAttr
       .withName(name)
       .withIndex(index)
@@ -143,11 +143,11 @@ class AttributeSuite extends FunSuite {
   test("customized binary attribute") {
     val name = "clicked"
     val index = 2
-    val values = Array("false", "true")
+    val values = Array("no", "yes")
     val metadata = Metadata.fromJson(
-      """{"type":"binary","name":"clicked","index":2,"values":["false","true"]}""")
+      """{"type":"binary","name":"clicked","idx":2,"vals":["no","yes"]}""")
     val metadataWithoutType = Metadata.fromJson(
-      """{"name":"clicked","index":2,"values":["false","true"]}""")
+      """{"name":"clicked","idx":2,"vals":["no","yes"]}""")
     val attr = BinaryAttribute.defaultAttr
       .withName(name)
       .withIndex(index)
