@@ -19,7 +19,8 @@ package org.apache.spark.ml.attribute
 
 import scala.collection.mutable.ArrayBuffer
 
-import org.apache.spark.sql.types.{Metadata, MetadataBuilder}
+import org.apache.spark.mllib.linalg.VectorUDT
+import org.apache.spark.sql.types.{Metadata, MetadataBuilder, StructField}
 
 class AttributeGroup(val name: String, attrs: Array[Attribute]) extends Serializable {
 
@@ -81,6 +82,16 @@ class AttributeGroup(val name: String, attrs: Array[Attribute]) extends Serializ
       .build()
   }
 
+  def toStructField(existingMetadata: Metadata): StructField = {
+    val newMetadata = new MetadataBuilder()
+      .withMetadata(existingMetadata)
+      .putMetadata(AttributeKey.ML_ATTR, toMetadata)
+      .build()
+    StructField(name, new VectorUDT, nullable = false, newMetadata)
+  }
+
+  def toStructField(): StructField = toStructField(Metadata.empty)
+
   override def equals(other: Any): Boolean = {
     other match {
       case o: AttributeGroup =>
@@ -137,5 +148,10 @@ object AttributeGroup {
       i += 1
     }
     new AttributeGroup(name, attributes)
+  }
+
+  def fromStructField(field: StructField): AttributeGroup = {
+    require(field.dataType == new VectorUDT)
+    fromMetadata(field.metadata.get(AttributeKey.ML_ATTR), field.name)
   }
 }

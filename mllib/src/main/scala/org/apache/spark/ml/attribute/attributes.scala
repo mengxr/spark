@@ -19,7 +19,7 @@ package org.apache.spark.ml.attribute
 
 import scala.annotation.varargs
 
-import org.apache.spark.sql.types.{Metadata, MetadataBuilder}
+import org.apache.spark.sql.types.{DoubleType, Metadata, MetadataBuilder, StructField}
 
 sealed abstract class Attribute extends Serializable {
 
@@ -46,12 +46,29 @@ sealed abstract class Attribute extends Serializable {
   /** Converts this attribute to Metadata without type info. */
   def toMetadata(): Metadata = toMetadata(withType = true)
 
+  /** Creates a [[StructField]] with some existing metadata. */
+  def toStructField(existingMetadata: Metadata): StructField = {
+    val newMetadata = new MetadataBuilder()
+      .withMetadata(existingMetadata)
+      .putMetadata(AttributeKey.ML_ATTR, withoutName.withoutIndex.toMetadata())
+      .build()
+    StructField(name.get, DoubleType, nullable = false, newMetadata)
+  }
+
+  /** Creates a [[StructField]]. */
+  def toStructField(): StructField = toStructField(Metadata.empty)
+
   override def toString: String = toMetadata().toString
 }
 
 private[attribute] trait AttributeFactory {
 
   def fromMetadata(metadata: Metadata): Attribute
+
+  def fromStructField(field: StructField): Attribute = {
+    require(field.dataType == DoubleType)
+    fromMetadata(field.metadata.getMetadata(AttributeKey.ML_ATTR)).withName(field.name)
+  }
 }
 
 object Attribute extends AttributeFactory {
@@ -90,6 +107,7 @@ private[attribute] object AttributeKey {
   final val Sparsity: String = "sparsity"
   final val IsOrdinal: String = "isOrdinal"
   final val Cardinality: String = "cardinality"
+  final val ML_ATTR: String = "ml_attr"
 }
 
 class NumericAttribute private[ml] (
