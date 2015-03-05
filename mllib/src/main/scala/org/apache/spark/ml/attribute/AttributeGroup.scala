@@ -85,7 +85,7 @@ class AttributeGroup(val name: String, attrs: Array[Attribute]) extends Serializ
   def toStructField(existingMetadata: Metadata): StructField = {
     val newMetadata = new MetadataBuilder()
       .withMetadata(existingMetadata)
-      .putMetadata(AttributeKey.ML_ATTR, toMetadata)
+      .putMetadata(AttributeKeys.ML_ATTR, toMetadata)
       .build()
     StructField(name, new VectorUDT, nullable = false, newMetadata)
   }
@@ -152,6 +152,6 @@ object AttributeGroup {
 
   def fromStructField(field: StructField): AttributeGroup = {
     require(field.dataType == new VectorUDT)
-    fromMetadata(field.metadata.getMetadata(AttributeKey.ML_ATTR), field.name)
+    fromMetadata(field.metadata.getMetadata(AttributeKeys.ML_ATTR), field.name)
   }
 }

@@ -50,7 +50,7 @@ sealed abstract class Attribute extends Serializable {
   def toStructField(existingMetadata: Metadata): StructField = {
     val newMetadata = new MetadataBuilder()
       .withMetadata(existingMetadata)
-      .putMetadata(AttributeKey.ML_ATTR, withoutName.withoutIndex.toMetadata())
+      .putMetadata(AttributeKeys.ML_ATTR, withoutName.withoutIndex.toMetadata())
       .build()
     StructField(name.get, DoubleType, nullable = false, newMetadata)
   }
@@ -67,16 +67,16 @@ private[attribute] trait AttributeFactory {
 
   def fromStructField(field: StructField): Attribute = {
     require(field.dataType == DoubleType)
-    fromMetadata(field.metadata.getMetadata(AttributeKey.ML_ATTR)).withName(field.name)
+    fromMetadata(field.metadata.getMetadata(AttributeKeys.ML_ATTR)).withName(field.name)
   }
 }
 
 object Attribute extends AttributeFactory {
 
   override def fromMetadata(metadata: Metadata): Attribute = {
-    import org.apache.spark.ml.attribute.AttributeKey._
-    val attrType = if (metadata.contains(Type)) {
-      metadata.getString(Type)
+    import org.apache.spark.ml.attribute.AttributeKeys._
+    val attrType = if (metadata.contains(TYPE)) {
+      metadata.getString(TYPE)
     } else {
       AttributeType.Numeric.name
     }
@@ -96,19 +96,6 @@ object Attribute extends AttributeFactory {
   }
 }
 
-private[attribute] object AttributeKey {
-  final val Type: String = "type"
-  final val Name: String = "name"
-  final val Index: String = "index"
-  final val Values: String = "values"
-  final val Min: String = "min"
-  final val Max: String = "max"
-  final val Std: String = "std"
-  final val Sparsity: String = "sparsity"
-  final val IsOrdinal: String = "isOrdinal"
-  final val Cardinality: String = "cardinality"
-  final val ML_ATTR: String = "ml_attr"
-}
 
 class NumericAttribute private[ml] (
     override val name: Option[String] = None,
@@ -145,15 +132,15 @@ class NumericAttribute private[ml] (
 
   /** Convert this attribute to metadata. */
   override def toMetadata(withType: Boolean): Metadata = {
-    import org.apache.spark.ml.attribute.AttributeKey._
+    import org.apache.spark.ml.attribute.AttributeKeys._
     val bldr = new MetadataBuilder()
-    if (withType) bldr.putString(Type, attrType.name)
-    name.foreach(bldr.putString(Name, _))
-    index.foreach(bldr.putLong(Index, _))
-    min.foreach(bldr.putDouble(Min, _))
-    max.foreach(bldr.putDouble(Max, _))
-    std.foreach(bldr.putDouble(Std, _))
-    sparsity.foreach(bldr.putDouble(Sparsity, _))
+    if (withType) bldr.putString(TYPE, attrType.name)
+    name.foreach(bldr.putString(NAME, _))
+    index.foreach(bldr.putLong(INDEX, _))
+    min.foreach(bldr.putDouble(MIN, _))
+    max.foreach(bldr.putDouble(MAX, _))
+    std.foreach(bldr.putDouble(STD, _))
+    sparsity.foreach(bldr.putDouble(SPARSITY, _))
     bldr.build()
   }
 
@@ -200,13 +187,13 @@ object NumericAttribute extends AttributeFactory {
   val defaultAttr: NumericAttribute = new NumericAttribute
 
   override def fromMetadata(metadata: Metadata): NumericAttribute = {
-    import org.apache.spark.ml.attribute.AttributeKey._
-    val name = if (metadata.contains(Name)) Some(metadata.getString(Name)) else None
-    val index = if (metadata.contains(Index)) Some(metadata.getLong(Index).toInt) else None
-    val min = if (metadata.contains(Min)) Some(metadata.getDouble(Min)) else None
-    val max = if (metadata.contains(Max)) Some(metadata.getDouble(Max)) else None
-    val std = if (metadata.contains(Std)) Some(metadata.getDouble(Std)) else None
-    val sparsity = if (metadata.contains(Sparsity)) Some(metadata.getDouble(Sparsity)) else None
+    import org.apache.spark.ml.attribute.AttributeKeys._
+    val name = if (metadata.contains(NAME)) Some(metadata.getString(NAME)) else None
+    val index = if (metadata.contains(INDEX)) Some(metadata.getLong(INDEX).toInt) else None
+    val min = if (metadata.contains(MIN)) Some(metadata.getDouble(MIN)) else None
+    val max = if (metadata.contains(MAX)) Some(metadata.getDouble(MAX)) else None
+    val std = if (metadata.contains(STD)) Some(metadata.getDouble(STD)) else None
+    val sparsity = if (metadata.contains(SPARSITY)) Some(metadata.getDouble(SPARSITY)) else None
     new NumericAttribute(name, index, min, max, std, sparsity)
   }
 }
@@ -270,14 +257,14 @@ class NominalAttribute private[ml] (
   override def withoutIndex: NominalAttribute = copy(index = None)
 
   override def toMetadata(withType: Boolean): Metadata = {
-    import org.apache.spark.ml.attribute.AttributeKey._
+    import org.apache.spark.ml.attribute.AttributeKeys._
     val bldr = new MetadataBuilder()
-    if (withType) bldr.putString(Type, attrType.name)
-    name.foreach(bldr.putString(Name, _))
-    index.foreach(bldr.putLong(Index, _))
-    isOrdinal.foreach(bldr.putBoolean(IsOrdinal, _))
-    cardinality.foreach(bldr.putLong(Cardinality, _))
-    values.foreach(v => bldr.putStringArray(Values, v))
+    if (withType) bldr.putString(TYPE, attrType.name)
+    name.foreach(bldr.putString(NAME, _))
+    index.foreach(bldr.putLong(INDEX, _))
+    isOrdinal.foreach(bldr.putBoolean(ORDINAL, _))
+    cardinality.foreach(bldr.putLong(CARDINALITY, _))
+    values.foreach(v => bldr.putStringArray(VALUES, v))
     bldr.build()
   }
 
@@ -310,14 +297,14 @@ object NominalAttribute extends AttributeFactory {
   final val defaultAttr: NominalAttribute = new NominalAttribute
 
   override def fromMetadata(metadata: Metadata): NominalAttribute = {
-    import org.apache.spark.ml.attribute.AttributeKey._
-    val name = if (metadata.contains(Name)) Some(metadata.getString(Name)) else None
-    val index = if (metadata.contains(Index)) Some(metadata.getLong(Index).toInt) else None
-    val isOrdinal = if (metadata.contains(IsOrdinal)) Some(metadata.getBoolean(IsOrdinal)) else None
+    import org.apache.spark.ml.attribute.AttributeKeys._
+    val name = if (metadata.contains(NAME)) Some(metadata.getString(NAME)) else None
+    val index = if (metadata.contains(INDEX)) Some(metadata.getLong(INDEX).toInt) else None
+    val isOrdinal = if (metadata.contains(ORDINAL)) Some(metadata.getBoolean(ORDINAL)) else None
     val cardinality =
-      if (metadata.contains(Cardinality)) Some(metadata.getLong(Cardinality).toInt) else None
+      if (metadata.contains(CARDINALITY)) Some(metadata.getLong(CARDINALITY).toInt) else None
     val values =
-      if (metadata.contains(Values)) Some(metadata.getStringArray(Values)) else None
+      if (metadata.contains(VALUES)) Some(metadata.getStringArray(VALUES)) else None
     new NominalAttribute(name, index, isOrdinal, cardinality, values)
   }
 }
@@ -352,12 +339,12 @@ class BinaryAttribute private[ml] (
   }
 
   override def toMetadata(withType: Boolean): Metadata = {
-    import org.apache.spark.ml.attribute.AttributeKey._
+    import org.apache.spark.ml.attribute.AttributeKeys._
     val bldr = new MetadataBuilder
-    if (withType) bldr.putString(Type, attrType.name)
-    name.foreach(bldr.putString(Name, _))
-    index.foreach(bldr.putLong(Index, _))
-    values.foreach(v => bldr.putStringArray(Values, v))
+    if (withType) bldr.putString(TYPE, attrType.name)
+    name.foreach(bldr.putString(NAME, _))
+    index.foreach(bldr.putLong(INDEX, _))
+    values.foreach(v => bldr.putStringArray(VALUES, v))
     bldr.build()
   }
 
@@ -386,11 +373,11 @@ object BinaryAttribute extends AttributeFactory {
   final val defaultAttr: BinaryAttribute = new BinaryAttribute
 
   override def fromMetadata(metadata: Metadata): BinaryAttribute = {
-    import org.apache.spark.ml.attribute.AttributeKey._
-    val name = if (metadata.contains(Name)) Some(metadata.getString(Name)) else None
-    val index = if (metadata.contains(Index)) Some(metadata.getLong(Index).toInt) else None
+    import org.apache.spark.ml.attribute.AttributeKeys._
+    val name = if (metadata.contains(NAME)) Some(metadata.getString(NAME)) else None
+    val index = if (metadata.contains(INDEX)) Some(metadata.getLong(INDEX).toInt) else None
     val values =
-      if (metadata.contains(Values)) Some(metadata.getStringArray(Values)) else None
+      if (metadata.contains(VALUES)) Some(metadata.getStringArray(VALUES)) else None
     new BinaryAttribute(name, index, values)
   }
 }
