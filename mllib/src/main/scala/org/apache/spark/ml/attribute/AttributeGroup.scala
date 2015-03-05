@@ -152,6 +152,6 @@ object AttributeGroup {
 
   def fromStructField(field: StructField): AttributeGroup = {
     require(field.dataType == new VectorUDT)
-    fromMetadata(field.metadata.get(AttributeKey.ML_ATTR), field.name)
+    fromMetadata(field.metadata.getMetadata(AttributeKey.ML_ATTR), field.name)
   }
 }
