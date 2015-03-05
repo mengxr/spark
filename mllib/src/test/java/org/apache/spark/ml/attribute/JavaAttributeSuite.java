@@ -36,20 +36,20 @@ public class JavaAttributeSuite {
   public void testNumericAttribute() {
     NumericAttribute attr = NumericAttribute.defaultAttr()
       .withName("age").withIndex(0).withMin(0.0).withMax(1.0).withStd(0.5).withSparsity(0.4);
-    Assert.assertEquals(attr, Attribute.fromMetadata(attr.toMetadata()));
+    Assert.assertEquals(attr.withoutIndex(), Attribute.fromStructField(attr.toStructField()));
   }
 
   @Test
   public void testNominalAttribute() {
     NominalAttribute attr = NominalAttribute.defaultAttr()
       .withName("size").withIndex(1).withValues("small", "medium", "large");
-    Assert.assertEquals(attr, Attribute.fromMetadata(attr.toMetadata()));
+    Assert.assertEquals(attr.withoutIndex(), Attribute.fromStructField(attr.toStructField()));
   }
 
   @Test
   public void testBinaryAttribute() {
     BinaryAttribute attr = BinaryAttribute.defaultAttr()
       .withName("clicked").withIndex(2).withValues("no", "yes");
-    Assert.assertEquals(attr, Attribute.fromMetadata(attr.toMetadata()));
+    Assert.assertEquals(attr.withoutIndex(), Attribute.fromStructField(attr.toStructField()));
   }
 }
