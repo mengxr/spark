@@ -25,7 +25,7 @@ class AttributeGroupSuite extends FunSuite {
     val attrs = Array(
       NumericAttribute.defaultAttr,
       NominalAttribute.defaultAttr,
-      BinaryAttribute.defaultAttr,
+      BinaryAttribute.defaultAttr.withIndex(0),
       NumericAttribute.defaultAttr.withName("age").withSparsity(0.8),
       NominalAttribute.defaultAttr.withName("size").withValues("small", "medium", "large"),
       BinaryAttribute.defaultAttr.withName("clicked").withValues("no", "yes"),
@@ -34,6 +34,8 @@ class AttributeGroupSuite extends FunSuite {
     val group = new AttributeGroup("user", attrs)
     assert(group.size === 8)
     assert(group.name === "user")
+    assert(group(0) === NumericAttribute.defaultAttr.withIndex(0))
+    assert(group(2) === BinaryAttribute.defaultAttr.withIndex(2))
     assert(group.indexOf("age") === 3)
     assert(group.indexOf("size") === 4)
     assert(group.indexOf("clicked") === 5)
@@ -42,5 +44,6 @@ class AttributeGroupSuite extends FunSuite {
       group("abc")
     }
     assert(group === AttributeGroup.fromMetadata(group.toMetadata, group.name))
+    assert(group === AttributeGroup.fromStructField(group.toStructField()))
   }
 }

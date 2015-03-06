@@ -32,4 +32,6 @@ private[attribute] object AttributeKeys {
   final val SPARSITY: String = "sparsity"
   final val ORDINAL: String = "ord"
   final val CARDINALITY: String = "card"
+  final val ATTRIBUTES: String = "attrs"
+  final val NUM_ATTRIBUTES: String = "num_attrs"
 }
