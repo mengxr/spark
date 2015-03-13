@@ -22,6 +22,7 @@ import org.apache.spark.sql.catalyst.errors.TreeNodeException
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans.logical.LeafNode
 import org.apache.spark.sql.catalyst.trees.TreeNode
+import org.apache.spark.sql.types.Metadata
 
 /**
  * Thrown when an invalid attempt is made to access a property of a tree that has yet to be fully
@@ -54,6 +55,7 @@ case class UnresolvedAttribute(name: String) extends Attribute with trees.LeafNo
   override def withNullability(newNullability: Boolean) = this
   override def withQualifiers(newQualifiers: Seq[String]) = this
   override def withName(newName: String) = UnresolvedAttribute(name)
+  override def withMetadata(newMetadata: Metadata) = this
 
   // Unresolved attributes are transient at compile time and don't get evaluated during execution.
   override def eval(input: Row = null): EvaluatedType =
@@ -93,6 +95,7 @@ trait Star extends Attribute with trees.LeafNode[Expression] {
   override def withNullability(newNullability: Boolean) = this
   override def withQualifiers(newQualifiers: Seq[String]) = this
   override def withName(newName: String) = this
+  override def withMetadata(newMetadata: Metadata) = this
 
   // Star gets expanded at runtime so we never evaluate a Star.
   override def eval(input: Row = null): EvaluatedType =
@@ -159,6 +162,8 @@ case class MultiAlias(child: Expression, names: Seq[String])
   override def withQualifiers(newQualifiers: Seq[String]) = this
 
   override def withName(newName: String) = this
+
+  override def withMetadata(newMetadata: Metadata) = this
 
   override def eval(input: Row = null): EvaluatedType =
     throw new TreeNodeException(this, s"No function to evaluate expression. type: ${this.nodeName}")

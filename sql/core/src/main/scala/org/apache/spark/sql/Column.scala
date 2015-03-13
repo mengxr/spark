@@ -679,6 +679,19 @@ class Column(protected[sql] val expr: Expression) {
       println(expr.prettyString)
     }
   }
+
+  /**
+   * Returns a [[Column]] with input the metadata embedded. This has effect only if the underlying
+   * expression is an [[Attribute]].
+   */
+  def withMetadata(metadata: Metadata): Column = {
+    expr match {
+      case named: Attribute =>
+        new Column(named.withMetadata(metadata))
+      case _ =>
+        this
+    }
+  }
 }
 
 

@@ -77,6 +77,7 @@ abstract class Attribute extends NamedExpression {
   def withNullability(newNullability: Boolean): Attribute
   def withQualifiers(newQualifiers: Seq[String]): Attribute
   def withName(newName: String): Attribute
+  def withMetadata(newMetadata: Metadata): Attribute
 
   def toAttribute = this
   def newInstance(): Attribute
@@ -179,7 +180,15 @@ case class AttributeReference(
     if (name == newName) {
       this
     } else {
-      AttributeReference(newName, dataType, nullable)(exprId, qualifiers)
+      AttributeReference(newName, dataType, nullable, metadata)(exprId, qualifiers)
+    }
+  }
+
+  override def withMetadata(newMetadata: Metadata): Attribute = {
+    if (metadata == newMetadata) {
+      this
+    } else {
+      AttributeReference(name, dataType, nullable, metadata)(exprId, qualifiers)
     }
   }
 
@@ -214,6 +223,7 @@ case class PrettyAttribute(name: String) extends Attribute with trees.LeafNode[E
   override def newInstance(): Attribute = ???
   override def withQualifiers(newQualifiers: Seq[String]): Attribute = ???
   override def withName(newName: String): Attribute = ???
+  override def withMetadata(newMetadata: Metadata): Attribute = ???
   override def qualifiers: Seq[String] = ???
   override def exprId: ExprId = ???
   override def eval(input: Row): EvaluatedType = ???
