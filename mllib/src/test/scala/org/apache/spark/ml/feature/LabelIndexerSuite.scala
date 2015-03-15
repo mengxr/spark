@@ -19,6 +19,7 @@ package org.apache.spark.ml.feature
 
 import org.scalatest.FunSuite
 
+import org.apache.spark.ml.attribute.{Attribute, NominalAttribute}
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.sql.SQLContext
 
@@ -36,7 +37,13 @@ class LabelIndexerSuite extends FunSuite with MLlibTestSparkContext {
     val indexer = new LabelIndexer()
       .setOutputCol("labelIndex")
       .fit(df)
-    val output = indexer.transform(df).select("id", "labelIndex").map { r =>
+    val transformed = indexer.transform(df)
+    val attr = Attribute.fromStructField(transformed.schema("labelIndex"))
+      .asInstanceOf[NominalAttribute]
+    assert(attr.numValues === Some(3))
+    assert(attr.values.get(0) === "a")
+    assert(attr.values.get.toSet === Set("a", "b", "c"))
+    val output = transformed.select("id", "labelIndex").map { r =>
       (r.getInt(0), r.getInt(1))
     }.collect().toSet
     // a -> 0, b -> 2, c -> 1

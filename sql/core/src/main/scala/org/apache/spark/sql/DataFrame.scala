@@ -41,7 +41,7 @@ import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.execution.{EvaluatePython, ExplainCommand, LogicalRDD}
 import org.apache.spark.sql.jdbc.JDBCWriteDetails
 import org.apache.spark.sql.json.JsonRDD
-import org.apache.spark.sql.types.{NumericType, StructType}
+import org.apache.spark.sql.types.{Metadata, NumericType, StructType}
 import org.apache.spark.sql.sources.{ResolvedDataSource, CreateTableUsingAsSelect}
 import org.apache.spark.util.Utils
 
@@ -737,6 +737,14 @@ class DataFrame private[sql](
    * @group dfops
    */
   def withColumn(colName: String, col: Column): DataFrame = select(Column("*"), col.as(colName))
+
+  def withColumn(colName: String, col: Column, metadata: Metadata): DataFrame = {
+    val expr = col match {
+      case Column(expr: NamedExpression) => expr
+      case Column(expr: Expression) => Alias(expr, expr.prettyString)()
+    }
+    Project(namedExpressions.toSeq, logicalPlan)
+  }
 
   /**
    * Returns a new [[DataFrame]] with a column renamed.

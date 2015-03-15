@@ -689,7 +689,7 @@ class Column(protected[sql] val expr: Expression) {
       case named: Attribute =>
         new Column(named.withMetadata(metadata))
       case _ =>
-        this
+        throw new RuntimeException(s"Cannot handle type ${expr.getClass}")
     }
   }
 }

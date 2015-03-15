@@ -18,6 +18,7 @@
 package org.apache.spark.ml.feature
 
 import org.apache.spark.annotation.AlphaComponent
+import org.apache.spark.ml.attribute.NominalAttribute
 import org.apache.spark.ml.param._
 import org.apache.spark.ml.{Estimator, Model}
 import org.apache.spark.sql.DataFrame
@@ -39,8 +40,8 @@ private[feature] trait LabelIndexerBase extends Params with HasLabelCol with Has
     val outputColName = map(outputCol)
     require(inputFields.forall(_.name != outputColName),
       s"Output column $outputColName already exists.")
-    // TODO: Store ML attributes in metadata.
-    val outputFields = inputFields :+ StructField(map(outputCol), IntegerType, nullable = false)
+    val attr = NominalAttribute.defaultAttr.withName(map(outputCol))
+    val outputFields = inputFields :+ attr.toStructField()
     StructType(outputFields)
   }
 }
@@ -106,7 +107,10 @@ class LabelIndexerModel private[ml] (
   override def transform(dataset: DataFrame, paramMap: ParamMap): DataFrame = {
     val map = this.paramMap ++ paramMap
     val indexer = udf { label: String => labelToIndex.apply(label) }
-    dataset.withColumn(map(outputCol), indexer(dataset(map(labelCol))))
+    val outputColName = map(outputCol)
+    val metadata = NominalAttribute.defaultAttr
+      .withName(outputColName).withValues(labels).toStructField().metadata
+    dataset.withColumn(outputColName, indexer(dataset(map(labelCol))).withMetadata(metadata))
   }
 
   override def transformSchema(schema: StructType, paramMap: ParamMap): StructType = {
