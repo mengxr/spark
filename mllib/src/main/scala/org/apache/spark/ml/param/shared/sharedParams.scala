@@ -59,6 +59,8 @@ trait HasElasticNetParam extends HasRegParam {
   def getElasticNetParam: Double = getOrDefault(elasticNetParam)
 }
 
+// This file is generated.
+
 /**
  * :: DeveloperApi ::
  * Trait for shared param tol.

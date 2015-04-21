@@ -17,22 +17,20 @@
 
 package org.apache.spark.ml.regression
 
-import org.apache.spark.mllib.linalg.BLAS.dot
-import org.apache.spark.rdd.RDD
-
 import scala.collection.mutable.ArrayBuffer
 
-import breeze.linalg.{norm => brzNorm, DenseVector => BDV, SparseVector => BSV}
-import breeze.optimize.{LBFGS => BreezeLBFGS, OWLQN => BreezeOWLQN}
-import breeze.optimize.{CachedDiffFunction, DiffFunction}
+import breeze.linalg.{DenseVector => BDV, SparseVector => BSV, norm => brzNorm}
+import breeze.optimize.{CachedDiffFunction, DiffFunction, LBFGS => BreezeLBFGS,
+  OWLQN => BreezeOWLQN}
 
 import org.apache.spark.annotation.AlphaComponent
+import org.apache.spark.ml.param.{ParamMap, Params}
 import org.apache.spark.ml.param.shared.{HasElasticNetParam, HasMaxIter, HasTol}
-import org.apache.spark.ml.param.{Params, ParamMap}
-import org.apache.spark.mllib.stat.MultivariateOnlineSummarizer
-import org.apache.spark.mllib.linalg.BLAS._
 import org.apache.spark.mllib.linalg.{BLAS, Vector, Vectors}
+import org.apache.spark.mllib.linalg.BLAS._
 import org.apache.spark.mllib.regression.LabeledPoint
+import org.apache.spark.mllib.stat.MultivariateOnlineSummarizer
+import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.storage.StorageLevel
 
@@ -57,7 +55,7 @@ class LinearRegression extends Regressor[Vector, LinearRegression, LinearRegress
    * @group setParam
    */
   def setRegParam(value: Double): this.type = set(regParam, value)
-  setRegParam(0.0)
+  setDefault(regParam -> 0.0)
 
   /**
    * Set the ElasticNet mixing parameter.
@@ -96,6 +94,7 @@ class LinearRegression extends Regressor[Vector, LinearRegression, LinearRegress
       instances.persist(StorageLevel.MEMORY_AND_DISK)
     }
 
+    // Should use MultivariateOnlineSummarizer and StatCounter.
     // TODO: Benchmark if using two MultivariateOnlineSummarizer will be faster
     //       than appending the label into the vector.
     val summary = instances.map { case (label: Double, features: Vector) =>
@@ -119,15 +118,14 @@ class LinearRegression extends Regressor[Vector, LinearRegression, LinearRegress
     val costFun = new LeastSquaresCostFun(
       instances,
       yStd, yMean,
-      summary.variance.toArray.slice(0, numFeatures).map(Math.sqrt(_)).toArray,
-      summary.mean.toArray.slice(0, numFeatures).toArray,
+      summary.variance.toArray.slice(0, numFeatures).map(math.sqrt),
+      summary.mean.toArray.slice(0, numFeatures),
       effectiveL2RegParam)
 
     val optimizer = if (paramMap(elasticNetParam) == 0.0 || effectiveRegParam == 0.0) {
       new BreezeLBFGS[BDV[Double]](paramMap(maxIter), 10, paramMap(tol))
     } else {
-      new BreezeOWLQN[Int, BDV[Double]](
-        paramMap(maxIter), 10, effectiveL1RegParam, paramMap(tol))
+      new BreezeOWLQN[Int, BDV[Double]](paramMap(maxIter), 10, effectiveL1RegParam, paramMap(tol))
     }
 
     val initialWeights = Vectors.zeros(numFeatures)
@@ -144,17 +142,18 @@ class LinearRegression extends Regressor[Vector, LinearRegression, LinearRegress
 
     val weights = {
       val rawWeights = state.x.toArray
-      val std = summary.variance.toArray.slice(0, numFeatures).map(Math.sqrt(_)).toArray
-      require(rawWeights.size == std.size)
+      val std = summary.variance.toArray.slice(0, numFeatures).map(math.sqrt)
+      require(rawWeights.length == std.length)
 
       var i = 0
-      while (i < rawWeights.size) {
+      while (i < rawWeights.length) {
         rawWeights(i) = if (std(i) != 0.0) rawWeights(i) * yStd / std(i) else 0.0
         i += 1
       }
       Vectors.dense(rawWeights)
     }
 
+    // TODO: comment
     val intercept = yMean - dot(weights, Vectors.dense(summary.mean.toArray.slice(0, numFeatures)))
 
     if (handlePersistence) {
@@ -276,7 +275,7 @@ private class LeastSquaresAggregator(
       this.totalCnt = other.totalCnt
       this.lossSum = other.lossSum
       this.diffSum = other.diffSum
-      this.gradientSumArray = other.gradientSumArray.clone
+      this.gradientSumArray = other.gradientSumArray.clone()
     }
     this
   }
@@ -286,12 +285,12 @@ private class LeastSquaresAggregator(
   def loss: Double = lossSum / totalCnt
 
   def gradient: Vector = {
-    val result = Vectors.dense(gradientSumArray.clone)
+    val result = Vectors.dense(gradientSumArray.clone())
 
     val correction = {
-      val temp = effectiveWeightsArray.clone
+      val temp = effectiveWeightsArray.clone()
       var i = 0
-      while (i < temp.size) {
+      while (i < temp.length) {
         temp(i) *= featuresMean(i)
         i += 1
       }
