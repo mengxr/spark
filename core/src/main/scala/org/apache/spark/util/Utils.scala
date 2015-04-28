@@ -42,6 +42,8 @@ import org.apache.hadoop.security.UserGroupInformation
 import org.apache.log4j.PropertyConfigurator
 import org.eclipse.jetty.util.MultiException
 import org.json4s._
+
+import tachyon.TachyonURI
 import tachyon.client.{TachyonFS, TachyonFile}
 
 import org.apache.spark._
@@ -64,6 +66,12 @@ private[spark] object Utils extends Logging {
   val random = new Random()
 
   val DEFAULT_SHUTDOWN_PRIORITY = 100
+
+  /**
+   * The shutdown priority of the SparkContext instance. This is lower than the default
+   * priority, so that by default hooks are run before the context is shut down.
+   */
+  val SPARK_CONTEXT_SHUTDOWN_PRIORITY = 50
 
   private val MAX_DIR_CREATION_ATTEMPTS: Int = 10
   @volatile private var localRootDirs: Array[String] = null
@@ -955,7 +963,7 @@ private[spark] object Utils extends Logging {
    * Delete a file or directory and its contents recursively.
    */
   def deleteRecursively(dir: TachyonFile, client: TachyonFS) {
-    if (!client.delete(dir.getPath(), true)) {
+    if (!client.delete(new TachyonURI(dir.getPath()), true)) {
       throw new IOException("Failed to delete the tachyon dir: " + dir)
     }
   }
@@ -2114,7 +2122,7 @@ private[spark] object Utils extends Logging {
    * @return A handle that can be used to unregister the shutdown hook.
    */
   def addShutdownHook(hook: () => Unit): AnyRef = {
-    addShutdownHook(DEFAULT_SHUTDOWN_PRIORITY, hook)
+    addShutdownHook(DEFAULT_SHUTDOWN_PRIORITY)(hook)
   }
 
   /**
@@ -2124,7 +2132,7 @@ private[spark] object Utils extends Logging {
    * @param hook The code to run during shutdown.
    * @return A handle that can be used to unregister the shutdown hook.
    */
-  def addShutdownHook(priority: Int, hook: () => Unit): AnyRef = {
+  def addShutdownHook(priority: Int)(hook: () => Unit): AnyRef = {
     shutdownHooks.add(priority, hook)
   }
 
@@ -2170,7 +2178,7 @@ private [util] class SparkShutdownHookManager {
   def runAll(): Unit = synchronized {
     shuttingDown = true
     while (!hooks.isEmpty()) {
-      Utils.logUncaughtExceptions(hooks.poll().run())
+      Try(Utils.logUncaughtExceptions(hooks.poll().run()))
     }
   }
 
@@ -2182,7 +2190,6 @@ private [util] class SparkShutdownHookManager {
   }
 
   def remove(ref: AnyRef): Boolean = synchronized {
-    checkState()
     hooks.remove(ref)
   }
 

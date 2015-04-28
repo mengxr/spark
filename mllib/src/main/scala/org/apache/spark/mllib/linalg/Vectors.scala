@@ -550,7 +550,7 @@ class SparseVector(
     s" ${values.length} values.")
 
   override def toString: String =
-    "(%s,%s,%s)".format(size, indices.mkString("[", ",", "]"), values.mkString("[", ",", "]"))
+    s"($size,${indices.mkString("[", ",", "]")},${values.mkString("[", ",", "]")})"
 
   override def toArray: Array[Double] = {
     val data = new Array[Double](size)
