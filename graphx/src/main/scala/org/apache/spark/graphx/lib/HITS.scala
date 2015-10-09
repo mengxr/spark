@@ -17,14 +17,31 @@
 
 package org.apache.spark.graphx.lib
 
+import scala.math
 import scala.reflect.ClassTag
 import org.apache.spark.Logging
 import org.apache.spark.graphx._
-import scala.math
+import org.apache.spark.rdd.RDD
+
 
 
 /**
- * HITS algorithm implementation. 
+ * HITS algorithm implementation. Our implementation works as follows:
+ *
+ * 1) Initialize the hub and authority scores of all vertices to 0.0, 
+ * with the exception of vertices with >= 1 outgoing edge,
+ * whose hub scores are initialized to 1.
+ *
+ * 2) Until we have reached the desired number of iterations...
+ *    a) Set the auth score of each vertex to the sum of the hub
+ *       scores of neighbors with outgoing edges to the current vertex
+ *    b) Normalize auth scores so that the vector of all auth scores
+ *       has unit norm
+ *    c) Set the hub score of each vertex to the sum of the auth
+ *       scores of neighbors with incoming edges from the current vertex
+ *    d) Normalize hub scores so that the vector of all hub scores
+ *       has unit norm
+ *
  */
 object HITS extends Logging {
 
@@ -60,7 +77,7 @@ object HITS extends Logging {
 
 
     var iteration = 0
-    var prevHitsGraph: Graph[(Double, Double), Unit] = null
+    var prevHitsGraph: Graph[(Double, Double), Unit] = null      
 
     // Helper function that returns the square of the second element
     // of a pair
@@ -68,13 +85,13 @@ object HITS extends Logging {
       pair._2 * pair._2
     }
 
-    while (iteration < numIter) {
 
+
+    while (iteration < numIter) {
       // Compute auth scores for each vertex v by summing the
       // hub scores of all vertices u with edges to v.
       val authUpdates = hitsGraph.aggregateMessages[Double](
         ctx => ctx.sendToDst(ctx.srcAttr._2), _ + _, TripletFields.Src).cache()
-
 
       // Get a reference to our current graph so that we can
       // unpersist it later on
@@ -88,9 +105,6 @@ object HITS extends Logging {
       hitsGraph = hitsGraph.joinVertices(authUpdates) {
         (id, oldProperties, newAuthScore) => (newAuthScore / authNormalizer, oldProperties._2)
       }.cache()
-
-      // Unpersist auth updates RDD
-      // authUpdates.unpersist(false)
 
       // Unpersist our old hits graph
       prevHitsGraph.unpersist(false)
@@ -111,22 +125,14 @@ object HITS extends Logging {
         (id, oldProperties, newHubScore) => (oldProperties._1, newHubScore / hubNormalizer)
       }.cache()
 
-      // Unpersist hub updates RDD
-      // hubUpdates.unpersist(false)      
-
       // Uncache old graph
-      prevHitsGraph.unpersist(false)   
+      prevHitsGraph.unpersist(false)       
+
       iteration += 1
+
+
+
     }
-
-    // println("Done!")
-
-    // println("============Final output=============")
-    // hitsGraph.vertices.foreach(println)
-
-    // val otherResult = GridHITS2(3, 3, 1)
-    // println("===========Test output================")
-    // otherResult.foreach(println)
 
     hitsGraph
   }

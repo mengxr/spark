@@ -17,9 +17,11 @@
 
 package org.apache.spark.graphx.lib
 
-import org.apache.spark.SparkFunSuite
 import org.apache.spark.graphx._
 import org.apache.spark.graphx.util.GraphGenerators
+import org.apache.spark.rdd.RDD
+import org.apache.spark.SparkFunSuite
+
 
 object GridHITS {
   def apply(nRows: Int, nCols: Int, nIter: Int): Seq[(VertexId, (Double, Double))] = {
@@ -45,14 +47,14 @@ object GridHITS {
 
     // Compute the hub and auth scores of the generated grid graph
     var hub = Array.fill(nRows * nCols)(1.0)
-    var auth : Array[Double] = new Array[Double](nRows * nCols)
+    var auth = new Array[Double](nRows * nCols)
 
     // The bottom-right (last) point in the grid should
     // have a hub score of 0, as it has no outgoing edges
     hub(nRows * nCols - 1) = 0
 
     // Test the grid graph by manually simulating auth/hub score
-    // updates nIter times
+    // updates nIter times, i.e. like the corresponding PageRank test
     for (iter <- 0 until nIter) {
       
       // Update the auth scores based on incoming-edge hub scores
@@ -101,53 +103,94 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
     (0L until nVertices).zip(actualScores)
   }
 
+  def getCycleHITSResult(nVertices : Int) : Seq[(VertexId, (Double, Double))] = {
+    val commonScore = 1.0 / math.sqrt(nVertices)
+    val actualScores = Array.fill(nVertices)(commonScore, commonScore)
+    (0L until nVertices).zip(actualScores)
+  }
 
-  // test("Edgeless HITS") {
-  //   withSpark { sc => 
-  //     // val nVertices = 1
-  //     // val singletonGraph = GraphGenerators.starGraph(sc, nVertices).cache()
-
-  //     // val scores = HITS.run(graph = singletonGraph, numIter = 1).vertices.cache()
-  //     // TODO assert that hub and auth scores are 0
-  //     // scores.unpersist(false)
-
-  //   }
-  // } // end of test edgeless HITS
+  def getEdgelessHITSResult(nVertices : Int) : Seq[(VertexId, (Double, Double))] = {
+    val actualScores = Array.fill(nVertices)(0.0, 0.0)
+    (0L until nVertices).zip(actualScores)
+  }
 
 
-  // test("Cycle HITS") {
-  //   withSpark { sc => 
-  //
-  //   }    
-  // }
+  // Run HITS on a graph with no edges. All vertices should have hub and
+  // authority scores of 0.
+  test("Edgeless HITS") {
+    withSpark { sc => 
+      val nVertices = 200
 
+      // Create an RDD for the vertices
+      val verticesSeq = (0L until nVertices).zip(Array.fill(nVertices)(()))
+      val vertices = VertexRDD(sc.parallelize(verticesSeq))
+      // Create an RDD for edges
+      val edges  = sc.emptyRDD[Edge[Unit]]
+      // Create our edgeless graph
+      val edgeless_graph = Graph(vertices, edges)
+
+      val errorTol = 1e-5
+
+      // Get VertexRdd[(Double, Double)] instances representing the 
+      // results of running HITS for one iteration on our graph
+      // and the expected results of running HITS on an edgeless graph
+      val oneIterationScores = HITS.run(graph = edgeless_graph, numIter = 1).vertices
+      val actualScores = VertexRDD(sc.parallelize(getEdgelessHITSResult(nVertices)))
+
+      assert(compareScores(oneIterationScores, actualScores) < errorTol)
+
+    }
+  } // end of test Edgeless HITS
+
+
+
+  // Run HITS on a graph consisting of a single cycle of n vertices. 
+  // All vertices should have hub and authority scores of 1 / sqrt(n) 
+  test("Cycle HITS") {
+    withSpark { sc => 
+      val nVertices = 200
+      val chainSequence = (0 until nVertices).map(x => (x, (x + 1) % nVertices))
+      val rawEdges = sc.parallelize(chainSequence, 1).map { case (s, d) => (s.toLong, d.toLong) }
+      val cycle = Graph.fromEdgeTuples(rawEdges, 1.0).cache()  
+      val errorTol = 1e-5
+
+      val oneIterationScores = HITS.run(graph = cycle, numIter = 1).vertices
+      val actualScores = VertexRDD(sc.parallelize(getCycleHITSResult(nVertices)))
+      assert(compareScores(oneIterationScores, actualScores) < errorTol)
+
+    }    
+  } // end of test Cycle HITS
+
+  // Run HITS on a star graph consisting of many outer vertices that each
+  // have a single directed edge to a center vertex.
   test("Star HITS") {
     withSpark { sc =>
       val nVertices = 1000
       val starGraph = GraphGenerators.starGraph(sc, nVertices).cache()
       val errorTol = 1.0e-5
+      val nIter = 10
 
-      val staticScores1 = HITS.run(graph = starGraph, numIter = 1).vertices
-      val staticScores2 = HITS.run(graph = starGraph, numIter = 10).vertices.cache()     
+      val oneIterationScores = HITS.run(graph = starGraph, numIter = 1).vertices
+      val manyIterationScores = HITS.run(graph = starGraph, numIter = nIter).vertices.cache()     
 
       // HITS should only take 1 iteration to converge on a star
-      // graph
-      val notMatching = staticScores1.innerZipJoin(staticScores2) { (vid, pr1, pr2) =>
+      // graph, so the results after 1 and nIter > 1 iterations should be the same
+      val notMatching = oneIterationScores.innerZipJoin(manyIterationScores) { (vid, pr1, pr2) =>
         if (pr1 != pr2) 1 else 0
       }.map { case (vid, test) => test }.sum()
       assert(notMatching === 0)
 
-      // For a star graph on n vertices, the middle vertex (vertex 0) has n - 1 incoming edges
-      // and 0 outgoing edges => a hub score of 0 and an auth score of 1
-
-      // Similarly, the outer vertices each have one outgoing edge and no incoming
-      // edges => a hub score of 1 / sqrt(n - 1) and an auth score of 0
+      // For a star graph on n vertices, the middle vertex (vertex 0) has 
+      // a hub score of 0 and an auth score of 1. Conversely, the outer vertices each have a
+      // hub score of 1 / sqrt(n - 1) and an auth score of 0.
       val actualScores = VertexRDD(sc.parallelize(getStarHITSResult(nVertices)))
-      assert(compareScores(actualScores, staticScores1) < errorTol)
+      assert(compareScores(actualScores, oneIterationScores) < errorTol)
     }
   } // end of test Star HITS
 
 
+  // Run HITS on a grid graph where each vertex has an edges to its
+  // row + 1 and col + 1 neighbors, if they exist
   test("Grid HITS") {
     withSpark { sc =>
       val rows = 150
@@ -164,6 +207,8 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
     }
   } // end of test Grid HITS
 
+  // Run HITS on a chain graph where each vertex besides the last vertex
+  // has a single outgoing edge to the next vertex in the chain.
   test("Chain HITS") {
     withSpark { sc =>
       val nVertices = 200
