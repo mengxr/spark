@@ -16,7 +16,6 @@
  */
 
 package org.apache.spark.graphx.lib
-
 import org.apache.spark.graphx._
 import org.apache.spark.graphx.util.GraphGenerators
 import org.apache.spark.rdd.RDD
@@ -84,8 +83,9 @@ object GridHITS {
 
 class HITSSuite extends SparkFunSuite with LocalSparkContext {
 
-  def compareScores(expected: VertexRDD[(Double, Double)], actual: VertexRDD[(Double, Double)]): Double = {
-    expected.innerZipJoin(actual) { case (id, a, b) => (a._1 - b._1) * (a._1 - b._1) + (a._2 - b._2) * (a._2 - b._2) }
+  def compareScores(expected: VertexRDD[(Double, Double)], computed: VertexRDD[(Double, Double)]): Double = {
+    expected.innerZipJoin(computed) 
+      { case (id, a, b) => (a._1 - b._1) * (a._1 - b._1) + (a._2 - b._2) * (a._2 - b._2) }
       .map { case (id, error) => error }.sum()
   }
 
@@ -127,17 +127,17 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
       // Create an RDD for edges
       val edges  = sc.emptyRDD[Edge[Unit]]
       // Create our edgeless graph
-      val edgeless_graph = Graph(vertices, edges)
+      val edgelessGraph = Graph(vertices, edges)
 
       val errorTol = 1e-5
 
       // Get VertexRdd[(Double, Double)] instances representing the 
       // results of running HITS for one iteration on our graph
       // and the expected results of running HITS on an edgeless graph
-      val oneIterationScores = HITS.run(graph = edgeless_graph, numIter = 1).vertices
+      val oneIterationScores = HITS.run(graph = edgelessGraph, numIter = 1).vertices
       val actualScores = VertexRDD(sc.parallelize(getEdgelessHITSResult(nVertices)))
 
-      assert(compareScores(oneIterationScores, actualScores) < errorTol)
+      assert(compareScores(actualScores, oneIterationScores) < errorTol)
 
     }
   } // end of test Edgeless HITS
@@ -156,7 +156,7 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
 
       val oneIterationScores = HITS.run(graph = cycle, numIter = 1).vertices
       val actualScores = VertexRDD(sc.parallelize(getCycleHITSResult(nVertices)))
-      assert(compareScores(oneIterationScores, actualScores) < errorTol)
+      assert(compareScores(actualScores, oneIterationScores) < errorTol)
 
     }    
   } // end of test Cycle HITS
@@ -175,10 +175,8 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
 
       // HITS should only take 1 iteration to converge on a star
       // graph, so the results after 1 and nIter > 1 iterations should be the same
-      val notMatching = oneIterationScores.innerZipJoin(manyIterationScores) { (vid, pr1, pr2) =>
-        if (pr1 != pr2) 1 else 0
-      }.map { case (vid, test) => test }.sum()
-      assert(notMatching === 0)
+      // to within our specified error tolerance
+      assert(compareScores(oneIterationScores, manyIterationScores) < errorTol)
 
       // For a star graph on n vertices, the middle vertex (vertex 0) has 
       // a hub score of 0 and an auth score of 1. Conversely, the outer vertices each have a
@@ -199,11 +197,11 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
       val errorTol = 1.0e-5
       val gridGraph = GraphGenerators.gridGraph(sc, rows, cols).cache()
 
-      val staticScores = HITS.run(graph = gridGraph, numIter = numIter).vertices.cache()
-      val referenceScores = VertexRDD(sc.parallelize(GridHITS(rows, cols, numIter))).cache()
+      val computedScores = HITS.run(graph = gridGraph, numIter = numIter).vertices.cache()
+      val actualScores = VertexRDD(sc.parallelize(GridHITS(rows, cols, numIter))).cache()
 
 
-      assert(compareScores(referenceScores, staticScores) < errorTol)
+      assert(compareScores(actualScores, computedScores) < errorTol)
     }
   } // end of test Grid HITS
 
@@ -234,8 +232,39 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
       // Similarly, vertex n - 1 should should have an hub score of 0 while vertices
       // 0 through n - 2 should have hub scores of 1 / sqrt(n - 1).
       val actualScores = VertexRDD(sc.parallelize(getChainHITSResult(nVertices)))
-      assert(compareScores(oneIterationScores, actualScores) < errorTol)
+      assert(compareScores(actualScores, oneIterationScores) < errorTol)
     }
   } // end of test Chain HITS
+
+
+  // Run HITS on a fully-connected graph (clique). Increase the number of
+  // iterations to test that our implementation avoids overflow errors.
+  test("Fully-connected HITS") {
+    withSpark { sc => 
+
+      val numIter = 30
+      val nVertices = 10
+      var rawEdges = new Array[(VertexId, VertexId)](0)
+      val errorTol = 1.0e-5
+
+      // Build the set of edges for the fully-connected graph
+      for (i <- 0L until nVertices) {
+        for (j <- 0L until i) {
+          rawEdges = rawEdges :+ (i, j)
+          rawEdges = rawEdges :+ (j, i)
+        }
+      }
+
+      val graph = Graph.fromEdgeTuples(sc.parallelize(rawEdges), ())
+      val computedScores = HITS.run(graph = graph, numIter = numIter).vertices.cache()
+
+      // In a fully-connected graph, each vertex should have a hub and auth
+      // score of 1 / sqrt(n), the same score as each vertex in a cycle
+      val actualScores = VertexRDD(sc.parallelize(getCycleHITSResult(nVertices)))
+
+      assert(compareScores(actualScores, computedScores) < errorTol)
+    }
+  } // end of test Fully-connected HITS
+
 
 }
