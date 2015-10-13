@@ -31,7 +31,7 @@ import org.apache.spark.rdd.RDD
  * Kleinberg's paper (http://www.cs.cornell.edu/home/kleinber/auth.pdf)
  * and works as follows:
  *
- * 1) Initialize the hub and authority scores of all vertices to 0.0, 
+ * 1) Initialize the hub and authority scores of all vertices to 0.0,
  *    with the exception of vertices with >= 1 outgoing edge,
  *    whose hub scores are initialized to 1.
  *
@@ -44,7 +44,7 @@ import org.apache.spark.rdd.RDD
  * 3) Normalize the hub and auth scores so that the vectors of all hub/auth
  *    scores have unit norm.
  *
- * Our algorithm also periodically normalizes the hub/auth scores 
+ * Our algorithm also periodically normalizes the hub/auth scores
  * during step 2 to avoid Double overflow, if necessary.
  */
 object HITS extends Logging {
@@ -61,7 +61,7 @@ object HITS extends Logging {
    * @param graph the graph on which to run the HITS algorithm
    * @param numIter the number of iterations of HITS to run
    *
-   * @return the graph with each vertex containing 
+   * @return the graph with each vertex containing
    *         a tuple of its normalized auth and hub scores (in that order)
    *         along with edges with Unit attributes.
    */
@@ -73,7 +73,7 @@ object HITS extends Logging {
     // Helper function that normalizes the auth and hub scores of a graph,
     // returning a copy of the graph with normalized vertex attributes
     def normalizeGraph(
-      graph : Graph[(Double, Double), Unit]): Graph[(Double, Double), Unit] = 
+      graph : Graph[(Double, Double), Unit]): Graph[(Double, Double), Unit] =
     {
         // Get the squareroot of the sum of the squares of our vertices' auth
         // scores
@@ -89,7 +89,7 @@ object HITS extends Logging {
 
         val result = graph.mapVertices[(Double, Double)](
           (id, prop) => (prop._1 / authNormalizer, prop._2 / hubNormalizer)
-        )       
+        )
         result
     }
 
@@ -98,7 +98,7 @@ object HITS extends Logging {
     // iterations that can be run on the current graph without incurring Double
     // overflow.
     def getMaxIters[VD: ClassTag, ED: ClassTag](
-      graph: Graph[VD, ED]): Int = 
+      graph: Graph[VD, ED]): Int =
     {
       // Handle the case of an edgeless graph - auth and hub scores will be 0 in such
       // a graph, so we can iterate forever without encountering Double overflow
@@ -112,11 +112,10 @@ object HITS extends Logging {
       }
 
       // Compute the max indegree or outdegree of any vertex
-      val maxInDegree: (VertexId, Int)  = graph.inDegrees.reduce(max)
-      val maxOutDegree: (VertexId, Int) = graph.outDegrees.reduce(max)    
+      val maxInDegree: (VertexId, Int) = graph.inDegrees.reduce(max)
+      val maxOutDegree: (VertexId, Int) = graph.outDegrees.reduce(max)
       val maxDegree = math.max(maxInDegree._2, maxOutDegree._2)
 
-      
       var nVertices: Double = graph.vertices.count()
 
       // Estimate an upper bound for the number of iterations of HITS we can
@@ -128,10 +127,10 @@ object HITS extends Logging {
       // in which each vertex has indegree and outdegree equal to maxDegree
       //
       // In such a graph, each vertex's hub and auth scores grow
-      // grow exponentially as maxDegree^(2t) where t is the number of 
+      // grow exponentially as maxDegree^(2t) where t is the number of
       // iterations that have passed.
       //
-      // The squared norm of the hub/auth scores after t iterations is therefore bounded by 
+      // The squared norm of the hub/auth scores after t iterations is therefore bounded by
       // n * (maxDegree^(2t) ^ 2) = n * maxDegree ^ (4t)
       //
       // Since we need to be able to compute the squared norm of the hub/auth scores without
@@ -143,13 +142,13 @@ object HITS extends Logging {
       // vertices will begin to experience overflow errors after ~80 iterations.
 
       val allowedIters = math.log(Double.MaxValue / nVertices) / (4 * math.log(maxDegree))
-      
+
       // Round our upper bound down to the nearest integer but ensure
       // that it is at least 1.
       math.max(1, math.floor(allowedIters).toInt)
-    }    
+    }
 
-    // Initialize the HITS graph so that each vertex v has an auth 
+    // Initialize the HITS graph so that each vertex v has an auth
     // score of 1.0 and a hub score of 1.0 or 0.0 if v has/doesn't have
     // outgoing edges, respectively.
     var hitsGraph: Graph[(Double, Double), Unit] = graph.mapEdges((edge) => ())
@@ -168,7 +167,7 @@ object HITS extends Logging {
     // perform without incurring Double overflow in either our hub or auth scores
     val itersBeforeNorm = getMaxIters(graph)
 
-    var prevHitsGraph: Graph[(Double, Double), Unit] = null   
+    var prevHitsGraph: Graph[(Double, Double), Unit] = null
     var iteration = 0
     while (iteration < numIter) {
 
@@ -179,9 +178,9 @@ object HITS extends Logging {
 
       // Get a reference to our current graph so that we can
       // unpersist it later on
-      prevHitsGraph = hitsGraph      
+      prevHitsGraph = hitsGraph
 
-      // Assign hitsGraph to a copy of our current graph with 
+      // Assign hitsGraph to a copy of our current graph with
       // normalized auth scores.
       hitsGraph = hitsGraph.joinVertices(authUpdates) {
         (id, oldProperties, newAuthScore) => (newAuthScore, oldProperties._2)
@@ -205,7 +204,7 @@ object HITS extends Logging {
       }.cache()
 
       // Uncache old graph's vertices
-      prevHitsGraph.unpersistVertices(false)       
+      prevHitsGraph.unpersistVertices(false)
 
       iteration += 1
 
