@@ -408,6 +408,17 @@ class GraphOps[VD: ClassTag, ED: ClassTag](graph: Graph[VD, ED]) extends Seriali
   }
 
   /**
+   * Run hyperlink-induced topic search (HITS) for a fixed number of iterations returning
+   * a graph with vertex attributes containing the pairs (authority score, hub score) and
+   * edge attributes containing 1.
+   *
+   * @see [[org.apache.spark.graphx.lib.HITS$#run]]
+   */
+  def authoritiesAndHubs(numIter: Int): Graph[(Double, Double), Int] = {
+    HITS.run(graph, numIter)
+  }
+
+  /**
    * Compute the connected component membership of each vertex and return a graph with the vertex
    * value containing the lowest vertex id in the connected component containing that vertex.
    *
