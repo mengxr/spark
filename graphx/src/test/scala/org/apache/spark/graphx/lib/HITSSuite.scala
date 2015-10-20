@@ -22,6 +22,57 @@ import org.apache.spark.graphx._
 import org.apache.spark.graphx.util.GraphGenerators
 import org.apache.spark.rdd.RDD
 
+
+object GridHITS {
+  def apply(nRows: Int, nCols: Int, nIter: Int): Seq[(VertexId, (Double, Double))] = {
+    val inNbrs = Array.fill(nRows * nCols)(collection.mutable.MutableList.empty[Int])
+    val outNbrs = Array.fill(nRows * nCols)(collection.mutable.MutableList.empty[Int])
+
+    // Convert row column address into vertex ids (row major order)
+    def sub2ind(r: Int, c: Int): Int = r * nCols + c
+    // Make the grid graph
+    for (r <- 0 until nRows; c <- 0 until nCols) {
+      val ind = sub2ind(r, c)
+      if (r + 1 < nRows) {
+        outNbrs(ind) += sub2ind(r + 1, c)
+        inNbrs(sub2ind(r + 1, c)) += ind
+      }
+      if (c + 1 < nCols) {
+        outNbrs(ind) += sub2ind(r, c + 1)
+        inNbrs(sub2ind(r, c + 1)) += ind
+      }
+    }
+
+    def normalize(a: Array[Double]): Unit = {
+      val norm = math.sqrt(a.map( x => x * x).reduce(_ + _))
+      a.zipWithIndex.foreach { case (element, index) =>
+        a(index) = element / norm
+      }
+    }
+
+    // compute the authority and hub scores
+    val authorityScores = Array.fill(nRows * nCols)(1.0)
+    val hubScores = Array.fill(nRows * nCols)(1.0)
+    for (iter <- 0 until nIter) {
+      // update authority scores
+      for (ind <- 0 until (nRows * nCols)) {
+        authorityScores(ind) = inNbrs(ind).map( nbr => hubScores(nbr)).sum
+      }
+      // update hub scores
+      for (ind <- 0 until (nRows * nCols)) {
+        hubScores(ind) = outNbrs(ind).map( nbr => authorityScores(nbr)).sum
+      }
+      // normalize scores
+      normalize(authorityScores)
+      normalize(hubScores)
+    }
+    (0L until (nRows * nCols)).zip(
+        authorityScores.zip(hubScores))
+  }
+
+}
+
+
 class HITSSuite extends SparkFunSuite with LocalSparkContext {
 
   test("Star HITS") {
@@ -137,5 +188,27 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
       assert(emptyErrors.sum === 0)
      }
   } // end of test Empty Graph HITS
+
+  test("Grid HITS") {
+    withSpark { sc =>
+      val rows = 10
+      val cols = 10
+      val numIter = 50
+      val errorTol = 1.0e-5
+      val gridGraph = GraphGenerators.gridGraph(sc, rows, cols)
+
+      val computedScores = gridGraph
+        .authoritiesAndHubs(numIter).vertices.collect()
+        .sorted.map { case (vid, scores) => scores }
+      val referenceScores = GridHITS(rows, cols, numIter)
+        .sorted.map { case (vid, scores) => scores }
+
+      computedScores.zip(referenceScores)
+        .foreach { case ((authority, hub), (referenceAuthority, referenceHub)) =>
+          assert(math.abs(authority - referenceAuthority) < errorTol)
+          assert(math.abs(hub - referenceHub) < errorTol)
+        }
+    }
+  } // end of Grid HITS
 
 }
