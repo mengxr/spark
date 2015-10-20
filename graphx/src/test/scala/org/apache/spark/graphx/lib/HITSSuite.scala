@@ -29,6 +29,7 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
       val nVertices = 100
       val inwardStarGraph = GraphGenerators.starGraph(sc, nVertices).cache()
       val outerVertexScore = 1.0 / math.sqrt(nVertices - 1)
+      val errorTol = 1.0e-5
 
       val inwardScores1: VertexRDD[(Double, Double)] = inwardStarGraph
         .authoritiesAndHubs(numIter = 1).vertices
@@ -36,18 +37,25 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
         .authoritiesAndHubs(numIter = 2).vertices.cache()
 
       // Just like PageRank, HITS should only take 2 iterations to converge
-      val inwardNotMatching = inwardScores1.innerZipJoin(inwardScores2) { (vid, scores1, scores2) =>
-        if (scores1 != scores2) 1 else 0
-      }.map { case (vid, test) => test }.sum()
-      assert(inwardNotMatching === 0)
+      val inwardNotMatching = inwardScores1
+        .innerZipJoin(inwardScores2) { (vid, scores1, scores2) =>
+          (scores1, scores2)
+        }.collect().foreach { case (vid, (scores1, scores2)) =>
+          assert(math.abs(scores1._1 - scores2._1) < errorTol)
+          assert(math.abs(scores1._2 - scores2._2) < errorTol)
+        }
 
-      val inwardErrors = inwardScores2.map { case (vid, (authorityScore, hubScore)) =>
-        val correct = (vid > 0 && authorityScore == 0.0 && hubScore == outerVertexScore) ||
-                      (vid == 0L && authorityScore == 1.0 && hubScore == 0.0)
-        if (!correct) 1 else 0
-      }
-
-      assert(inwardErrors.sum === 0)
+      inwardScores2.collect()
+        .foreach { case (vid, (authorityScore, hubScore)) =>
+          if (vid > 0) {
+            assert(authorityScore < errorTol)
+            assert(math.abs(hubScore - outerVertexScore) < errorTol)
+          }
+          else if (vid == 0L) {
+            assert(math.abs(authorityScore - 1.0) < errorTol)
+            assert(hubScore < errorTol)
+          }
+        }
 
       val outwardStarGraph = inwardStarGraph.reverse
 
@@ -56,19 +64,25 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
       val outwardScores2: VertexRDD[(Double, Double)] = outwardStarGraph
         .authoritiesAndHubs(numIter = 2).vertices.cache()
 
-      // Just like PageRank, HITS should only take 2 iterations to converge
-      val outwardNotMatching = outwardScores1.innerZipJoin(outwardScores2) { (vid, scores1, scores2) =>
-        if (scores1 != scores2) 1 else 0
-      }.map { case (vid, test) => test }.sum()
-      assert(outwardNotMatching === 0)
+      val outwardNotMatching = outwardScores1
+        .innerZipJoin(outwardScores2) { (vid, scores1, scores2) =>
+          (scores1, scores2)
+        }.collect().foreach { case (vid, (scores1, scores2)) =>
+          assert(math.abs(scores1._1 - scores2._1) < errorTol)
+          assert(math.abs(scores1._2 - scores2._2) < errorTol)
+        }
 
-      val outwardErrors = outwardScores2.map { case (vid, (authorityScore, hubScore)) =>
-        val correct = (vid > 0 && authorityScore == outerVertexScore && hubScore == 0.0) ||
-                      (vid == 0L && authorityScore == 0.0 && hubScore == 1.0)
-        if (!correct) 1 else 0
-      }
-
-      assert(outwardErrors.sum === 0)
+      outwardScores2.collect()
+        .foreach { case (vid, (authorityScore, hubScore)) =>
+          if (vid > 0) {
+            assert(math.abs(authorityScore - outerVertexScore) < errorTol)
+            assert(hubScore < errorTol)
+          }
+          else if (vid == 0L) {
+            assert(authorityScore < errorTol)
+            assert(math.abs(hubScore - 1.0) < errorTol)
+          }
+        }
 
      }
   } // end of test Star HITS
@@ -79,6 +93,7 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
       // for a graph with no edges
       val nVertices = 100
       val expectedScore = 1.0 / math.sqrt(nVertices)
+      val errorTol = 1.0e-5
 
       val edges: RDD[(VertexId, VertexId)] = sc.parallelize(0 until nVertices).map { vid =>
         (vid, (vid + 1) % nVertices)
@@ -90,12 +105,12 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
       val circularScores: VertexRDD[(Double, Double)] = circularGraph
         .authoritiesAndHubs(numIter = 1).vertices
 
-      val circularErrors = circularScores.map { case (vid, (authorityScore, hubScore)) =>
-        val correct = authorityScore == expectedScore && hubScore == expectedScore
-        if (!correct) 1 else 0
-      }
+      circularScores.collect()
+        .foreach { case (vid, (authorityScore, hubScore)) =>
+          assert(math.abs(authorityScore - expectedScore) < errorTol)
+          assert(math.abs(hubScore - expectedScore) < errorTol)
+        }
 
-      assert(circularErrors.sum === 0)
      }
   } // end of test Circular Graph HITS
 

@@ -410,11 +410,11 @@ class GraphOps[VD: ClassTag, ED: ClassTag](graph: Graph[VD, ED]) extends Seriali
   /**
    * Run hyperlink-induced topic search (HITS) for a fixed number of iterations returning
    * a graph with vertex attributes containing the pairs (authority score, hub score) and
-   * edge attributes containing 1.
+   * edge attributes containing Unit.
    *
    * @see [[org.apache.spark.graphx.lib.HITS$#run]]
    */
-  def authoritiesAndHubs(numIter: Int): Graph[(Double, Double), Int] = {
+  def authoritiesAndHubs(numIter: Int): Graph[(Double, Double), Unit] = {
     HITS.run(graph, numIter)
   }
 
