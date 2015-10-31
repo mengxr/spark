@@ -1,3 +1,20 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.spark.graphx.lib
 
 import org.apache.spark.SparkFunSuite
@@ -12,10 +29,10 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
       val nVertices = 100
       val logGraph = GraphGenerators.logNormalGraph(sc, nVertices).cache()
       val errorTol = 1.0e-5
-      
+
       for (i <- 1 to 10) {
         val HITS1 = logGraph.hits(numIter = i, normFreq = 5).vertices
-        // Each step, the authority scores and hub scores should 
+        // Each step, the authority scores and hub scores should
         // have norm 1 respectively across the graph
         val authNormDiff = math.abs(1.0 - HITS1.map(vtx => vtx._2._1 * vtx._2._1).sum)
         val hubNormDiff = math.abs(1.0 - HITS1.map(vtx => vtx._2._2 * vtx._2._2).sum)
@@ -36,9 +53,9 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
       // the weights can be computed explicitly
       val notMatchingIter = HITS1.innerZipJoin(HITS2) { (vid, ah1, ah2) =>
         if (ah1._1 != ah2._1 || ah1._2 != ah2._2) 1 else 0
-      }.map { case (vid, test) => test }.sum()      
+      }.map { case (vid, test) => test }.sum()
       assert(notMatchingIter == 0)
-      
+
       val notMatchingScore = HITS2.map{
         vtx => vtx._1 match {
           case 0 => if (vtx._2._1 != 1.0 || vtx._2._2 != 0.0) 1 else 0
@@ -52,7 +69,7 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
   test("Complete HITS") {
     withSpark { sc =>
       val n = 30
-      
+
       // Construct complete graph, in which each pair of vertices are connected
       var va = new Array[(VertexId, Int)](n)
       for (i <- 0 to (n - 1)) {
@@ -80,12 +97,12 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
       // the weights can be computed explicitly
       val notMatchingIter = HITS1.innerZipJoin(HITS2) { (vid, ah1, ah2) =>
         if (math.abs(ah1._1 - ah2._1) > 1e-5 || math.abs(ah1._2 - ah2._2) > 1e-5) 1 else 0
-      }.map { case (vid, test) => test }.sum()      
+      }.map { case (vid, test) => test }.sum()
       assert(notMatchingIter == 0)
-      
+
       val notMatchingScore = HITS2.map{
         case (vid, (auth, hub)) => {
-          val correct = ((math.abs(auth - 1.0/math.sqrt(30)) < 1e-5) && 
+          val correct = ((math.abs(auth - 1.0/math.sqrt(30)) < 1e-5) &&
               (math.abs(hub - 1.0/math.sqrt(30)) < 1e-5))
           if (!correct) 1 else 0
         }
@@ -110,20 +127,24 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
           )
       )
       val threeGraph = Graph(vertices, edges)
-      
+
       val HITS1 = threeGraph.hits(numIter = 40, normFreq = 10).vertices.cache()
-      
+
       // We compare the solution with theoretical one, i.e. principal eigenvectors
       val notMatchingScore = HITS1.map{
-        case (vid, (auth, hub)) => vid match {
-          case 1L => if (math.abs(auth - 0.627963) < 1e-5 && 
-              math.abs(hub - 0.788675) < 1e-5) 0 else 1
-          case 2L => if (math.abs(auth - 0.459701) < 1e-5 && 
-              math.abs(hub - 0.577350) < 1e-5) 0 else 1 
-          case 3L => if (math.abs(auth - 0.627963) < 1e-5 && 
-              math.abs(hub - 0.211325) < 1e-5) 0 else 1
+        case (vid, (auth, hub)) => {
+          val correct = vid match {
+            case 1L => (math.abs(auth - 0.627963) > 1e-5) ||
+              (math.abs(hub - 0.788675) > 1e-5)
+            case 2L => (math.abs(auth - 0.459701) > 1e-5) ||
+              (math.abs(hub - 0.577350) > 1e-5)
+            case 3L => (math.abs(auth - 0.627963) > 1e-5) ||
+              (math.abs(hub - 0.211325) > 1e-5)
+          }
+          if (!correct) 1 else 0
         }
       }.sum()
+
       assert(notMatchingScore == 0)
     }
   }
@@ -147,11 +168,11 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
       )
       val fourGraph = Graph(vertices, edges)
       val HITS1 = fourGraph.hits(numIter = 10, normFreq = 10).vertices.cache()
-      
+
       // The solution is uniform for both authority and hub scores
       val notMatchingScore = HITS1.map{
         case (vid, (auth, hub)) => {
-          val correct = ((math.abs(auth - 0.5) < 1e-5) && 
+          val correct = ((math.abs(auth - 0.5) < 1e-5) &&
               (math.abs(hub - 0.5) < 1e-5))
           if (!correct) 1 else 0
         }
@@ -159,5 +180,4 @@ class HITSSuite extends SparkFunSuite with LocalSparkContext {
       assert(notMatchingScore == 0)
     }
   }
-
 }
