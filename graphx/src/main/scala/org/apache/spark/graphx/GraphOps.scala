@@ -407,6 +407,10 @@ class GraphOps[VD: ClassTag, ED: ClassTag](graph: Graph[VD, ED]) extends Seriali
     PageRank.run(graph, numIter, resetProb)
   }
 
+  def hits(numIter: Int, normFreq: Int = 1): Graph[(Double, Double), ED] = {
+    HITS.run(graph, numIter, normFreq)
+  }
+
   /**
    * Compute the connected component membership of each vertex and return a graph with the vertex
    * value containing the lowest vertex id in the connected component containing that vertex.
