@@ -68,72 +68,106 @@ object HITS extends Logging {
    *
    * @param graph the graph on which to compute authority and hub scores
    * @param numIter the number of iterations of HITS to run
-   * @param normFreq the number of iterations between two normalizations
    *
    * @return the graph with each vertex containing the authority and hub
    *      scores as a tuple
    */
   def run[VD: ClassTag, ED: ClassTag](graph: Graph[VD, ED],
-      numIter: Int, normFreq: Int): Graph[(Double, Double), ED] =
+      numIter: Int): Graph[(Double, Double), Null] =
   {
-    // Initialize the HITS graph with each vertex having
-    // attribute (authority, hub) = (1.0, 1.0)
-    var hitsGraph: Graph[(Double, Double), ED] = graph
-    // Set the vertex attributes to the initial authority and hub scores
+    // Initialize the HITS graph with each vertex having attribute  = 1.0
+    var hitsGraph: Graph[Double, Null] = graph
+        .mapVertices((id, attr) => 1.0)
+        .mapEdges(e => null)
+        .cache()
+
+    // Initialize the output graph with authority and hub scores
+    var scoreGraph: Graph[(Double, Double), Null] = graph
         .mapVertices((id, attr) => (1.0, 1.0))
+        .mapEdges(e => null)
+        .cache()
+
+    // Estimate the maximum number of iterations allowed between two normalizations
+    val maxInDegrees = hitsGraph.inDegrees.reduce((a, b) => if (a._2 > b._2) a else b)
+    val maxOutDegrees = hitsGraph.outDegrees.reduce((a, b) => if (a._2 > b._2) a else b)
+    val normFreq = math.max(math.floor(1023.0 / 2 * math.log(2) /
+        math.log(math.max(maxInDegrees._2, maxOutDegrees._2))), 1)
 
     var iteration = 0
-    var prevHits: Graph[(Double, Double), ED] = null
+    var prevHits: Graph[Double, Null] = null
 
     while (iteration < numIter) {
       hitsGraph.cache()
       // Compute the contribution of each vertex's hub score to the authority scores
       // of the neighbors, perform local preaggregation, and do the final aggregation
       // at the receiving vertices. Requires a shuffle for aggregation.
-      val authUpdates = hitsGraph.aggregateMessages[(Double)](
-      ctx => ctx.sendToDst(ctx.srcAttr._2), _ + _, TripletFields.Src)
-      // Normalize the authority scores across the graph every certain iterations.
-      // After normalization, the authority scores have unit Euclidean norm.
-      var authNormUpdates = authUpdates
-      if (((iteration + 1) % normFreq == 0) || (iteration == numIter - 1)) {
+      val authUpdates = hitsGraph.aggregateMessages[Double](
+      ctx => ctx.sendToDst(ctx.srcAttr), _ + _, TripletFields.Src)
+
+      // Normalize the authority scores if it's the last step, and save the result
+      // to the output graph
+      if (iteration == numIter - 1) {
         val normAuth = math.sqrt(authUpdates.map(auth => auth._2 * auth._2).sum())
-        authNormUpdates = authUpdates.mapValues(attr => attr / normAuth)
-      }
-      prevHits = hitsGraph
-      // Apply the authority updates to get the new authority scores, using outerjoin to set 0 to
-      // the authority score of vertices that didn't receive a message.
-      // Requires a shuffle for broadcasting updated authority scores to the edge partitions.
-      hitsGraph = hitsGraph.outerJoinVertices(authNormUpdates) {
+        val normUpdate = authUpdates.mapValues(attr => attr / normAuth)
+        scoreGraph = scoreGraph.outerJoinVertices(normUpdate) {
           (id, attr, msg) => msg match {
             case Some(m) => (m, attr._2)
             case None => (0.0, attr._2)
           }
+        }.cache()
+      }
+
+      prevHits = hitsGraph
+
+      // Apply the authority updates to get the new authority scores, using outerjoin to set 0 to
+      // the authority score of vertices that didn't receive a message.
+      // Requires a shuffle for broadcasting updated authority scores to the edge partitions.
+      hitsGraph = hitsGraph.outerJoinVertices(authUpdates) {
+          (id, attr, msg) => msg match {
+            case Some(m) => m
+            case None => 0.0
+          }
       }
 
       // Update the hub scores in a similar way as the update of authority scores above.
-      val hubUpdates = hitsGraph.aggregateMessages[Double](
-        ctx => ctx.sendToSrc(ctx.dstAttr._1), _ + _, TripletFields.Dst)
-      // Normalize the hub scores every certain iterations
-      var hubNormUpdates = hubUpdates
-      if (((iteration + 1) % normFreq == 0) || (iteration == numIter - 1)) {
+      var hubUpdates = hitsGraph.aggregateMessages[Double](
+        ctx => ctx.sendToSrc(ctx.dstAttr), _ + _, TripletFields.Dst)
+
+      // Normalize the authority scores if it's the last step, and save the result
+      // to the output graph
+      if (iteration == numIter - 1) {
         val normHub = math.sqrt(hubUpdates.map(hub => hub._2 * hub._2).sum())
-        hubNormUpdates = hubUpdates.mapValues(attr => attr / normHub)
+        val normUpdate = hubUpdates.mapValues(attr => attr / normHub)
+        scoreGraph = scoreGraph.outerJoinVertices(normUpdate) {
+          (id, attr, msg) => msg match {
+            case Some(m) => (attr._1, m)
+            case None => (attr._1, 0.0)
+          }
+        }.cache()
       }
 
-      hitsGraph = hitsGraph.outerJoinVertices(hubNormUpdates) {
+      // Normalize the scores after a few iterations before exceeding the range
+      // of Double type
+      if ((iteration + 1) % normFreq == 0) {
+        val maxAttr = hubUpdates.reduce((a, b) => if (a._2 > b._2) a else b)._2
+        hubUpdates = hubUpdates.mapValues(attr => attr / maxAttr)
+      }
+
+      hitsGraph = hitsGraph.outerJoinVertices(hubUpdates) {
         (id, attr, msg) => msg match {
-          case Some(m) => (attr._1, m)
-          case None => (attr._1, 0.0)
+          case Some(m) => m
+          case None => 0.0
           }
       }.cache()
 
-      hitsGraph.vertices.foreachPartition(x => {})
+      hitsGraph.vertices.count()
       logInfo(s"HITS finished iteration $iteration.")
       prevHits.unpersist()
 
       iteration += 1
     }
 
-    hitsGraph
+    scoreGraph.vertices.count()
+    scoreGraph
   }
 }

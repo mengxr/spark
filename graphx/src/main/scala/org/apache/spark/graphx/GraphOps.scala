@@ -407,8 +407,14 @@ class GraphOps[VD: ClassTag, ED: ClassTag](graph: Graph[VD, ED]) extends Seriali
     PageRank.run(graph, numIter, resetProb)
   }
 
-  def hits(numIter: Int, normFreq: Int = 1): Graph[(Double, Double), ED] = {
-    HITS.run(graph, numIter, normFreq)
+  /**
+   * Run HITS (Hyperlink-Induced Topic Search) for a fixed number of iterations returning a graph
+   * with vertex attributes containing the authority and hub scores.
+   *
+   * @see [[org.apache.spark.graphx.lib.HITS$#run]]
+  */
+  def hits(numIter: Int): Graph[(Double, Double), Null] = {
+    HITS.run(graph, numIter)
   }
 
   /**
