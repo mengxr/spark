@@ -30,18 +30,15 @@ import org.apache.spark.util.Utils
 import org.apache.spark.util.random.XORShiftRandom
 
 /**
- * K-means clustering with support for multiple parallel runs and a k-means++ like initialization
- * mode (the k-means|| algorithm by Bahmani et al). When multiple concurrent runs are requested,
- * they are executed together with joint passes over the data for efficiency.
- *
- * This is an iterative algorithm that will make multiple passes over the data, so any RDDs given
- * to it should be cached by the user.
+ * K-means clustering with support for a k-means++ like initialization mode (the k-means|| algorithm
+ * by Bahmani et al).
+ * This is an iterative algorithm that will make multiple passes over the data, so any RDDs given to
+ * it should be cached by the user.
  */
 @Since("0.8.0")
 class KMeans private (
     private var k: Int,
     private var maxIterations: Int,
-    private var runs: Int,
     private var initializationMode: String,
     private var initializationSteps: Int,
     private var epsilon: Double,
@@ -49,11 +46,11 @@ class KMeans private (
     private var blockSize: Int) extends Serializable with Logging {
 
   /**
-   * Constructs a KMeans instance with default parameters: {k: 2, maxIterations: 20, runs: 1,
+   * Constructs a KMeans instance with default parameters: {k: 2, maxIterations: 20,
    * initializationMode: "k-means||", initializationSteps: 5, epsilon: 1e-4, seed: random}.
    */
   @Since("0.8.0")
-  def this() = this(2, 20, 1, KMeans.K_MEANS_PARALLEL, 5, 1e-4, Utils.random.nextLong(), 128)
+  def this() = this(2, 20, KMeans.K_MEANS_PARALLEL, 5, 1e-4, Utils.random.nextLong(), 128)
 
   /**
    * Number of clusters to create (k).
@@ -108,15 +105,16 @@ class KMeans private (
   }
 
   /**
-   * :: Experimental ::
    * Number of runs of the algorithm to execute in parallel.
    */
   @Since("1.4.0")
   @deprecated("Support for runs is deprecated. This param will have no effect in 2.0.0.", "1.6.0")
-  def getRuns: Int = runs
+  def getRuns: Int = {
+    logWarning("Support for runs is deprecated. This param has no effect since 2.0.0.")
+    1
+  }
 
   /**
-   * :: Experimental ::
    * Set the number of runs of the algorithm to execute in parallel. We initialize the algorithm
    * this many times with random starting conditions (configured by the initialization mode), then
    * return the best clustering found over any run. Default: 1.
@@ -124,19 +122,7 @@ class KMeans private (
   @Since("0.8.0")
   @deprecated("Support for runs is deprecated. This param will have no effect in 2.0.0.", "1.6.0")
   def setRuns(runs: Int): this.type = {
-    internalSetRuns(runs)
-  }
-
-  // Internal version of setRuns for Python API, this should be removed at the same time as setRuns
-  // this is done to avoid deprecation warnings in our build.
-  private[mllib] def internalSetRuns(runs: Int): this.type = {
-    if (runs <= 0) {
-      throw new IllegalArgumentException("Number of runs must be positive")
-    }
-    if (runs != 1) {
-      logWarning("Setting number of runs is deprecated and will have no effect in 2.0.0")
-    }
-    this.runs = runs
+    logWarning("Support for runs is deprecated. This param has no effect since 2.0.0.")
     this
   }
 
@@ -509,7 +495,7 @@ class KMeans private (
  * Top-level methods for calling K-means clustering.
  */
 @Since("0.8.0")
-object KMeans {
+object KMeans extends Logging {
 
   // Initialization mode names
   @Since("0.8.0")
@@ -523,8 +509,7 @@ object KMeans {
    * @param data Training points as an `RDD` of `Vector` types.
    * @param k Number of clusters to create.
    * @param maxIterations Maximum number of iterations allowed.
-   * @param runs Number of runs to execute in parallel. The best model according to the cost
-   *             function will be returned. (default: 1)
+   * @param runs no effect (deprecated)
    * @param initializationMode The initialization algorithm. This can either be "random" or
    *                           "k-means||". (default: "k-means||")
    * @param seed Random seed for cluster initialization. Default is to generate seed based
@@ -538,9 +523,10 @@ object KMeans {
       runs: Int,
       initializationMode: String,
       seed: Long): KMeansModel = {
+    logWarning("Support for runs is deprecated. This param has no effect since 2.0.0. " +
+      "Please use setters to configure k-means.")
     new KMeans().setK(k)
       .setMaxIterations(maxIterations)
-      .internalSetRuns(runs)
       .setInitializationMode(initializationMode)
       .setSeed(seed)
       .run(data)
@@ -552,8 +538,7 @@ object KMeans {
    * @param data Training points as an `RDD` of `Vector` types.
    * @param k Number of clusters to create.
    * @param maxIterations Maximum number of iterations allowed.
-   * @param runs Number of runs to execute in parallel. The best model according to the cost
-   *             function will be returned. (default: 1)
+   * @param runs no effect (deprecated)
    * @param initializationMode The initialization algorithm. This can either be "random" or
    *                           "k-means||". (default: "k-means||")
    */
@@ -564,9 +549,10 @@ object KMeans {
       maxIterations: Int,
       runs: Int,
       initializationMode: String): KMeansModel = {
+    logWarning("Support for runs is deprecated. This param has no effect since 2.0.0. " +
+      "Please use setters to configure k-means.")
     new KMeans().setK(k)
       .setMaxIterations(maxIterations)
-      .internalSetRuns(runs)
       .setInitializationMode(initializationMode)
       .run(data)
   }
@@ -579,7 +565,10 @@ object KMeans {
       data: RDD[Vector],
       k: Int,
       maxIterations: Int): KMeansModel = {
-    train(data, k, maxIterations, 1, K_MEANS_PARALLEL)
+    new KMeans()
+      .setK(k)
+      .setMaxIterations(maxIterations)
+      .run(data)
   }
 
   /**
@@ -591,7 +580,12 @@ object KMeans {
       k: Int,
       maxIterations: Int,
       runs: Int): KMeansModel = {
-    train(data, k, maxIterations, runs, K_MEANS_PARALLEL)
+    logWarning("Support for runs is deprecated. This param has no effect since 2.0.0. " +
+      "Please use setters to configure k-means.")
+    new KMeans()
+      .setK(k)
+      .setMaxIterations(maxIterations)
+      .run(data)
   }
 
   /**
