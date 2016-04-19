@@ -229,16 +229,14 @@ class KMeans private (
     }
 
     val centers = initialModel match {
-      case Some(kMeansCenters) => {
+      case Some(kMeansCenters) =>
         kMeansCenters.clusterCenters.map(s => new VectorWithNorm(s))
-      }
-      case None => {
+      case None =>
         if (initializationMode == KMeans.RANDOM) {
           initRandom(zippedData)
         } else {
           initKMeansParallel(zippedData)
         }
-      }
     }
 
     val samplePoint = data.first()
