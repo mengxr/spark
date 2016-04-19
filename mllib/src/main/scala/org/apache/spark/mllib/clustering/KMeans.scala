@@ -17,6 +17,7 @@
 
 package org.apache.spark.mllib.clustering
 
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark.annotation.Since
@@ -223,29 +224,20 @@ class KMeans private (
         + " parent RDDs are also uncached.")
     }
 
-    val zippedData = data.map { x =>
-      val norm = Vectors.norm(x, 2.0)
-      new VectorWithNorm(x, norm)
-    }
-
     val centers = initialModel match {
       case Some(kMeansCenters) =>
-        kMeansCenters.clusterCenters.map(s => new VectorWithNorm(s))
+        kMeansCenters.clusterCenters.map(new VectorWithNorm(_))
       case None =>
         if (initializationMode == KMeans.RANDOM) {
-          initRandom(zippedData)
+          initRandom(data).map(new VectorWithNorm(_))
         } else {
-          initKMeansParallel(zippedData)
+          initKMeansParallel(data.map(new VectorWithNorm(_)))
         }
     }
 
-    val samplePoint = data.first()
-    val dims = samplePoint.size
-    if (samplePoint.isInstanceOf[SparseVector]) {
-      logWarning("KMeans will be inefficient if the input data is Sparse Vector.")
-    }
+    val dims = centers.head.vector.size
 
-    val blockData = zippedData.mapPartitions { iter =>
+    val blockData = data.mapPartitions { iter =>
       iter.grouped(blockSize).map { points =>
         val realSize = points.size
         val pointsArray = new Array[Double](realSize * dims)
@@ -412,7 +404,7 @@ class KMeans private (
   /**
    * Initialize cluster centers at random.
    */
-  private def initRandom(data: RDD[VectorWithNorm]): Array[VectorWithNorm] = {
+  private def initRandom(data: RDD[Vector]): Array[Vector] = {
     // Sample cluster centers in one pass
     data.takeSample(true, k, new XORShiftRandom(this.seed).nextInt()).toSeq.toArray
   }
@@ -503,7 +495,6 @@ object KMeans extends Logging {
 
   /**
    * Trains a k-means model using the given set of parameters.
-   *
    * @param data Training points as an `RDD` of `Vector` types.
    * @param k Number of clusters to create.
    * @param maxIterations Maximum number of iterations allowed.
@@ -532,7 +523,6 @@ object KMeans extends Logging {
 
   /**
    * Trains a k-means model using the given set of parameters.
-   *
    * @param data Training points as an `RDD` of `Vector` types.
    * @param k Number of clusters to create.
    * @param maxIterations Maximum number of iterations allowed.
@@ -641,7 +631,6 @@ object KMeans extends Logging {
 
 /**
  * A vector with its norm for fast distance computation.
- *
  * @see [[org.apache.spark.mllib.clustering.KMeans#fastSquaredDistance]]
  */
 private[clustering]
@@ -653,4 +642,51 @@ class VectorWithNorm(val vector: Vector, val norm: Double) extends Serializable 
 
   /** Converts the vector to a dense vector. */
   def toDense: VectorWithNorm = new VectorWithNorm(Vectors.dense(vector.toArray), norm)
+}
+
+private[clustering]
+class MatrixWithRowNorms(val matrix: Matrix, val rowNorms: Vector) extends Serializable {
+  require(matrix.numRows == rowNorms.size,
+    s"matrix.numRows (${matrix.numRows}) doesn't match rowNorms.size ($rowNorms.size).")
+
+  def sqdist(other: MatrixWithRowNorms):
+}
+
+private[clustering]
+object MatrixWithRowNorms extends Serializable {
+  def fromRows(rows: Array[Vector]): MatrixWithRowNorms = {
+    val m = rows.length
+    val n = rows.head.size
+    val rowNorms = Vectors.dense(rows.map(Vectors.norm(_, 2.0)))
+    val totalNumActives = rows.map(_.numActives).sum
+    val isSparse = 1.0 * totalNumActives / m / n < 0.1
+    val matrix = if (isSparse) {
+      val values = mutable.ArrayBuilder.make[Double]
+      val colIndices = mutable.ArrayBuilder.make[Int]
+      val rowPtrs = mutable.ArrayBuilder.make[Int]
+      rowPtrs += 0
+      rows.foreach { row =>
+        var nnz = 0
+        row.foreachActive{ (j, v) =>
+          if (v != 0.0) {
+            colIndices += j
+            values += v
+            nnz += 1
+          }
+        }
+        rowPtrs += nnz
+      }
+      new SparseMatrix(
+        m, n, rowPtrs.result(), colIndices.result(), values.result(), isTransposed = true)
+    } else {
+      val values = Array.ofDim[Double](m * n)
+      var start = 0
+      rows.foreach { row =>
+        System.arraycopy(row.toArray, 0, values, start, n)
+        start += n
+      }
+      new DenseMatrix(m, n, values, isTransposed = true)
+    }
+    new MatrixWithRowNorms(matrix, rowNorms)
+  }
 }
