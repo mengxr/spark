@@ -144,8 +144,9 @@ object SparkBuild extends PomBuild {
 
   lazy val sparkGenjavadocSettings: Seq[sbt.Def.Setting[_]] = Seq(
     libraryDependencies += compilerPlugin(
-      "org.spark-project" %% "genjavadoc-plugin" % unidocGenjavadocVersion.value cross CrossVersion.full),
-    scalacOptions <+= target.map(t => "-P:genjavadoc:out=" + (t / "java")))
+      "com.typesafe.genjavadoc" %% "genjavadoc-plugin" % unidocGenjavadocVersion.value cross CrossVersion.full),
+    scalacOptions <+= target.map(t => "-P:genjavadoc:out=" + (t / "java")),
+    scalacOptions += "-P:genjavadoc:strictVisibility=true")
 
   lazy val sharedSettings = sparkGenjavadocSettings ++ Seq (
     exportJars in Compile := true,
@@ -155,7 +156,7 @@ object SparkBuild extends PomBuild {
       .map(file),
     incOptions := incOptions.value.withNameHashing(true),
     publishMavenStyle := true,
-    unidocGenjavadocVersion := "0.9-spark0",
+    unidocGenjavadocVersion := "0.9-28-g9b19d03",
 
     // Override SBT's default resolvers:
     resolvers := Seq(
